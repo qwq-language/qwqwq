@@ -1,0 +1,26 @@
+#pragma once
+
+#include <string>
+
+namespace qwq {
+
+/// Rewrites `source` into canonical form:
+///
+///   * one space between two items, none inside `( )`, `[ ]` or a joined word;
+///   * `o5q`, `o-3q`, `o"text"s`, `o#q` and array literals stay glued;
+///   * a chain of stages (`~ ; @ ?`) whose two operands hold no chain of their
+///     own is a leaf and stays on one line; a longer chain, or one holding
+///     another chain, is written as a block: the brackets get a line of their
+///     own and one operand goes on each line, indented one tab per enclosing
+///     block.  Brackets that merely wrap a block add neither a line nor a tab;
+///   * nothing is broken for width alone -- the shape of the program, not its
+///     length, decides where a line ends;
+///   * a definition whose body needs one line keeps the header with it,
+///     otherwise the body follows `=>` on a line of its own, indented one tab;
+///   * one blank line between definitions, none at the start or the end;
+///   * comments keep their place: their own line, or trailing after two spaces.
+///
+/// Throws `Error` if the source does not lex or parse.
+std::string format(const std::string& source);
+
+}  // namespace qwq

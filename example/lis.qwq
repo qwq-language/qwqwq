@@ -1,0 +1,123 @@
+// This is a example qwq program by AI.
+
+// Longest increasing subsequence, O(n log n) -- patience sorting + binary search.
+//   input :  n x1 .. xn          output: the LIS length
+//
+// T[k] is the smallest tail of an increasing subsequence of length k + 1, so T
+// is sorted and the answer is the number of piles.  Each x replaces the first
+// tail that is >= x; landing on the sentinel instead starts a new pile.
+//
+// T is always a power of two slots long (the smallest one above n), so it has
+// room for every pile and never needs to grow: L <= n <= p - 1.  The padding is
+// INT64_MAX, which is larger than any other input, so the binary search needs no
+// bounds check -- a probe into the padding simply fails the "< x" test.
+// (The price of the sentinel: an input equal to INT64_MAX reads as padding.)
+
+at : [q]_q -> q => ([q]_q) [] q
+
+put : [q]_q_q -> [q] => ([q]_q_q) [] [q]
+
+// n -> (k, p, n) with p the smallest power of two above n
+powtwo : q -> q_q_q =>
+	(o0q _ o1q) _ (q) ~
+	(
+		(
+			((q_q_q) $ (q_q_q)_(q_q_q)) ~
+			((q : o) _ (q_q) _ (q_q_q)) ~
+			(((q_q) <= a) _ (q_q_q))
+		) @
+		(((q _ o1q) ~ ((q_q) + q)) _ ((q _ o2q) ~ ((q_q) * q)) _ (q))
+	)
+
+// (T, k) -> the same table doubled k times
+fill : [q]_q -> [q]_q =>
+	(
+		(([q]_q) $ ([q]_q)_([q]_q)) ~
+		(((([q] : o) _ (q _ o0q)) ~ ((q_q) > a)) _ ([q]_q))
+	) ?
+	(
+		((([q] $ ([q])_([q])) ~ ((([q]_[q]) + [q]))) _ ((q _ o1q) ~ ((q_q) - q))) ~
+		fill
+	)
+
+// (T, step, x) -> (T, k, x, step): k is the first index whose tail is >= x,
+// found by binary lifting: for step = p/2, p/4, ... 1, probe T[k + step] and move
+// k up when the probe is still < x.  No bounds check is needed: the table holds
+// p slots and k + step stays below p, so a probe past the last pile reads the
+// padding, whose INT64_MAX fails the "< x" test and ends that round.
+lower : [q]_q_q -> [q]_q_q_q =>
+	(([q]) _ (o0q) _ (q $ q_q) _ (q)) ~
+	(([q]) _ (q) _ (q) _ ((q)_(q) . (q)_(q))) ~
+	((
+		(
+			(([q]_q_q_q_q) $ ([q]_q_q_q_q)_([q]_q_q_q_q)) ~
+			((([q] : o) _ (q : o) _ (q) _ (q_q : o)) _ ([q]_q_q_q_q)) ~
+			(((q _ o0q) ~ ((q_q) > a)) _ ([q]_q_q_q_q))
+		) @
+		(
+			(
+				(
+					(([q]_q_q_q_q) $ ([q]_q_q_q_q)_([q]_q_q_q_q)) ~
+					(
+						(
+							(
+								([q]) _
+								(
+									((q_q) + q) ~
+									((q _ o1q) ~ ((q_q) - q))
+								)
+							) ~
+							at
+						) _
+						(q) _
+						(q : o) _
+						([q]_q_q_q_q)
+					) ~
+					(((q_q) < a) _ ([q]_q_q_q_q))
+				) ?
+				(([q]) _ (((q_q) $ (q_q)_(q_q)) ~ (((q_q) + q) _ (q : o) _ (q))) _ (q_q))
+			) ~
+			(([q]) _ (q) _ (((q _ o2q) ~ ((q_q) / q))) _ (q_q))
+		)
+	)) ~
+	(([q]) _ (q) _ (q : o) _ (q_q))
+
+// one element: read x, bisect its pile, write T[k] := x, count a new pile
+step : [q]_q_q_q_q -> [q]_q_q_q_q =>
+	(((([q]) _ (q) _ (o#q)) ~ lower) _ ((q_q_q))) ~
+	(
+		(([q]_q_q_q_q_q_q) $ ([q]_q_q_q_q_q_q)_([q]_q_q_q_q_q_q)) ~
+		(
+			(
+				((([q]) _ (q)) ~ at) _ (q_q_q_q_q : o) ~
+				((q _ o9223372036854775807q) ~ ((q_q) == a))
+			) _
+			(((([q]) _ (q) _ (q)) ~ put) _ (q) _ (q) _ ((q _ o1q) ~ ((q_q) + q)) _ (q))
+		)
+	) ~
+	(
+		(((a_[q]_q_q_q_q) $ (a_[q]_q_q_q_q)_(a_[q]_q_q_q_q)) ~ ((a) _ ([q]_q_q_q_q : o) _ (a_[q]_q_q_q_q))) ?
+		((a) _ ([q]) _ (q) _ ((q _ o1q) ~ ((q_q) + q)) _ (q_q))
+	) ~
+	((a : o) _ ([q]) _ (q) _ (q_q_q))
+
+// loop while the read index is below n
+run : [q]_q_q_q_q -> [q]_q_q_q_q =>
+	((
+		(([q]_q_q_q_q) $ ([q]_q_q_q_q)_([q]_q_q_q_q)) ~
+		((([q] : o) _ (q : o) _ (q : o) _ (q_q)) _ ([q]_q_q_q_q)) ~
+		(((q_q) < a) _ ([q]_q_q_q_q))
+	)) ?
+	(step ~ run)
+
+(o#q) ~
+(powtwo) ~
+(
+	(
+		((o{o9223372036854775807q}[q] _ (q)) ~ fill) ~
+		(([q]) _ (q : o))
+	) _
+	(((q _ o2q) ~ ((q_q) / q)) _ (o0q) _ (o0q) _ (q))
+) ~
+(run) ~
+(([q] : o) _ (q : o) _ (q) _ (q : o) _ (q : o))
