@@ -31,7 +31,7 @@ struct Options {
   bool repl = false;
   bool format = false;
   bool formatCheck = false;
-  std::int64_t stepLimit = 1000000000;
+  std::int64_t stepLimit = INT64_MAX;
 };
 
 void printUsage(std::ostream& out) {
@@ -49,7 +49,7 @@ void printUsage(std::ostream& out) {
       << "  --fmt           rewrite the source in canonical layout\n"
       << "  --fmt-check     exit 1 when the source is not in canonical layout\n"
       << "  --repl          start the REPL even when standard input is not a terminal\n"
-      << "  --max-steps N   evaluation step limit (default: 1000000000)\n"
+      << "  --max-steps N   evaluation step limit\n"
       << "  -h, --help      show this help\n"
       << "  -v, --version   show the version\n";
 }

@@ -11,9 +11,6 @@
 namespace qwq {
 namespace {
 
-/// Guards against runaway recursion; each call consumes C++ stack.
-constexpr int kMaximumCallDepth = 2000;
-
 /// Arithmetic follows C++: truncating division, remainder with the sign of the
 /// dividend, and wraparound on overflow.  Signed overflow is undefined in C++,
 /// so the wrapping operations are performed on unsigned values.
@@ -307,15 +304,7 @@ Stream Interpreter::evaluateCall(const Expr& expr, Stream input) {
                 expr.position);
   }
 
-  if (depth_ >= kMaximumCallDepth) {
-    throw Error("maximum call depth exceeded while calling '" + expr.text +
-                    "' (infinite recursion?)",
-                expr.position);
-  }
-
-  ++depth_;
   Stream result = evaluate(*body, std::move(input));
-  --depth_;
   return result;
 }
 

@@ -40,7 +40,6 @@ class Interpreter {
   std::int64_t stepLimit_;
   std::int64_t steps_ = 0;
   std::map<std::string, std::vector<Function>> functions_;
-  int depth_ = 0;
 
   Stream evaluate(const Expr& expr, Stream input);
   Stream evaluateFace(const Expr& expr, const Stream& input);

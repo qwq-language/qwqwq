@@ -23,6 +23,14 @@ add_executable(qwqwq
   src/value.cpp
 )
 
+if(MSVC)
+    target_link_options(qwqwq PRIVATE "/STACK:1073741824")
+elseif(MINGW)
+    target_link_options(qwqwq PRIVATE "-Wl,--stack,1073741824")
+elseif(APPLE)
+    target_link_options(qwqwq PRIVATE "LINKER:-stack_size,0x4000000")
+endif()
+
 target_include_directories(qwqwq PRIVATE src/include)
 
 target_compile_options(qwqwq PRIVATE
