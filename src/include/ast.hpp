@@ -11,34 +11,34 @@
 
 namespace qwq {
 
-/// The operation core of a face: the "mouth" between the two eyes.
+/// The operation core.
 enum class Core {
   IntLiteral,
   StringLiteral,
   BoolLiteral,
-  Negate,  // -
-  Not,     // !
-  Add,     // +
-  Sub,     // -
-  Mul,     // *
-  Div,     // /
-  Mod,     // %
-  BitOr,   // |
-  BitAnd,  // &
-  BitXor,  // ^
-  Equal,   // ==
-  NotEqual,
-  Greater,  // >
-  Less,     // <
-  GreaterEqual,
-  LessEqual,
-  Duplicate,  // $
-  Swap,       // .
-  Index,      // []   [T]_q -> T          read one element
-  ArrayWrite, // []   [T]_q_T -> [T]      write one element
-  ArrayLength,// []   [T] -> q            number of elements
-  ArrayLiteral,  // {o1q o2q} : o -> [q]; each element is a literal face
-  Read           // # : o -> q | s | a   one value from the input source
+  Negate,       // -
+  Not,          // !
+  Add,          // +
+  Sub,          // -
+  Mul,          // *
+  Div,          // /
+  Mod,          // %
+  BitOr,        // |
+  BitAnd,       // &
+  BitXor,       // ^
+  Equal,        // ==
+  NotEqual,     // !=
+  Greater,      // >
+  Less,         // <
+  GreaterEqual, // >=
+  LessEqual,    // <=
+  Duplicate,    // $
+  Swap,         // .
+  Index,        // []           [T]_q -> T         read one element
+  ArrayWrite,   // []           [T]_q_T -> [T]     write one element
+  ArrayLength,  // []           [T] -> q           number of elements
+  ArrayLiteral, // {o -> T}     o -> [T]           each element is a literal face
+  Read          // #            o -> T             one value from the input source
 };
 
 const char* name(Core core);
