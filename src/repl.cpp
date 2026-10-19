@@ -1,6 +1,7 @@
 #include "repl.hpp"
 
 #include <iostream>
+#include <limits>
 #include <string>
 
 #include "checker.hpp"
@@ -20,14 +21,13 @@ constexpr const char* kContinuation = "...> ";
 const char* kHelp =
     "Commands:\n"
     "  :help            show this help\n"
-    "  :quit, :q        leave the REPL\n"
+    "  :quit            leave the REPL\n"
     "  :type <expr>     print the type of an expression without running it\n"
     "  :dump <expr>     print the syntax tree with inferred types\n"
     "  :defs            list the functions defined in this session\n"
     "\n"
     "Anything else is parsed as qwq source.\n"
-    "Definitions written with `name => body` stay in scope for later lines.\n"
-    "Add `name : A -> B => body` when the body calls itself.\n"
+    "Definitions stay in scope for later lines.\n"
     "Expressions whose domain is o are evaluated and their resulting stream is printed.\n";
 
 std::string trim(const std::string& text) {
@@ -78,8 +78,12 @@ bool startsWithDefinition(const std::string& text) {
 class Session {
  public:
   Session(std::ostream& output, std::ostream& errors, std::istream& input,
-          std::int64_t stepLimit)
-      : output_(output), errors_(errors), input_(input), stepLimit_(stepLimit) {}
+          std::int64_t stepLimit, bool promptForInput)
+      : output_(output),
+        errors_(errors),
+        input_(input),
+        stepLimit_(stepLimit),
+        promptForInput_(promptForInput) {}
 
   /// Validates a definition and keeps it in scope for later lines.
   void define(const std::string& source) {
@@ -123,23 +127,28 @@ class Session {
     const Expr& main = *program.main;
 
     output_ << "[" << toString(main.in, main.domainItems) << " -> "
-            << toString(main.out, main.codomainItems) << "]";
+            << toString(main.out, main.codomainItems) << "]\n";
 
     if (!main.in.empty()) {
-      output_ << "  (expects an input stream of type "
+      output_ << "(expects an input stream of type "
               << toString(main.in, main.domainItems)
               << "; not evaluated)\n";
       return;
     }
 
-    Interpreter interpreter(output_, input_, stepLimit_, program.definitions);
-    const Stream result = interpreter.run(main, {});
-    if (result.empty()) {
-      output_ << " => (empty stream)\n";
-      return;
+    Interpreter interpreter(output_, input_, stepLimit_, program.definitions,
+                            promptForInput_ ? &output_ : nullptr);
+    Stream result;
+    try {
+      result = interpreter.run(main, {});
+    } catch (...) {
+      finishInputLine(interpreter);
+      throw;
     }
+    finishInputLine(interpreter);
 
-    output_ << " => ";
+    if (result.empty()) return;
+
     for (const Value& value : result) output_ << value;
     output_ << "\n";
   }
@@ -149,7 +158,16 @@ class Session {
   std::ostream& errors_;
   std::istream& input_;
   std::int64_t stepLimit_;
+  bool promptForInput_;
   std::string definitions_;
+
+  /// The remaining characters on the data line must not be mistaken for the
+  /// next REPL command. Do this after the entire expression has run so several
+  /// `#` reads may still consume tokens from one line.
+  void finishInputLine(const Interpreter& interpreter) {
+    if (interpreter.inputReadCount() == 0) return;
+    input_.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+  }
 
   /// Parses and checks `line` in the scope of the session's definitions.
   Program parseChecked(const std::string& line) {
@@ -174,7 +192,7 @@ bool handleCommand(const std::string& line, Session& session, std::ostream& outp
   const std::string argument =
       space == std::string::npos ? "" : trim(line.substr(space + 1));
 
-  if (command == ":quit" || command == ":q") return false;
+  if (command == ":quit") return false;
 
   if (command == ":help") {
     output << kHelp;
@@ -210,11 +228,11 @@ bool handleCommand(const std::string& line, Session& session, std::ostream& outp
 }  // namespace
 
 int runRepl(std::istream& input, std::ostream& output, std::ostream& errors,
-            std::int64_t stepLimit) {
+            std::int64_t stepLimit, bool promptForInput) {
   output << "qwqwq (qwq language interpreter) " << kVersion << "\n"
          << "Type :help for help, :quit to exit.\n";
 
-  Session session(output, errors, input, stepLimit);
+  Session session(output, errors, input, stepLimit, promptForInput);
   std::string buffer;
 
   for (;;) {

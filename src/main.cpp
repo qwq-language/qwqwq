@@ -137,9 +137,11 @@ int main(int argc, char** argv) {
   int exitCode = 0;
   if (!parseOptions(argc, argv, options, exitCode)) return exitCode;
 
-  const bool useRepl = options.repl || (options.file.empty() && stdinIsTerminal());
+  const bool inputIsTerminal = stdinIsTerminal();
+  const bool useRepl = options.repl || (options.file.empty() && inputIsTerminal);
   if (useRepl) {
-    return qwq::runRepl(std::cin, std::cout, std::cerr, options.stepLimit);
+    return qwq::runRepl(std::cin, std::cout, std::cerr, options.stepLimit,
+                        inputIsTerminal);
   }
 
   std::string source;

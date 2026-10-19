@@ -32,8 +32,12 @@ Stream dropFront(const Stream& stream, std::size_t count) {
 
 Interpreter::Interpreter(std::ostream& output, std::istream& input,
                          std::int64_t stepLimit,
-                         const std::vector<Definition>& definitions)
-    : output_(output), input_(input), stepLimit_(stepLimit) {
+                         const std::vector<Definition>& definitions,
+                         std::ostream* inputPrompt)
+    : output_(output),
+      input_(input),
+      inputPrompt_(inputPrompt),
+      stepLimit_(stepLimit) {
   for (const Definition& definition : definitions) {
     if (!definition.body) continue;
     functions_[definition.name].push_back(
@@ -47,6 +51,8 @@ Stream Interpreter::run(const Expr& expr, Stream input) {
 
 Value Interpreter::readInput(const Expr& expr) {
   const TypePtr& type = expr.out.at(0);
+
+  ++inputReadCount_;
 
   std::string token;
   input_ >> token;

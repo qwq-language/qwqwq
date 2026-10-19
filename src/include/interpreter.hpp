@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <iosfwd>
 #include <map>
@@ -21,7 +22,11 @@ class Interpreter {
  public:
   Interpreter(std::ostream& output, std::istream& input,
               std::int64_t stepLimit,
-              const std::vector<Definition>& definitions);
+              const std::vector<Definition>& definitions,
+              std::ostream* inputPrompt = nullptr);
+
+  /// Number of external input reads performed during the last run.
+  std::size_t inputReadCount() const noexcept { return inputReadCount_; }
 
   /// Runs `expr` on `input`.  Throws Error on runtime faults (division by
   /// zero, step limit exceeded, runaway recursion).
@@ -37,8 +42,10 @@ class Interpreter {
 
   std::ostream& output_;
   std::istream& input_;
+  std::ostream* inputPrompt_;
   std::int64_t stepLimit_;
   std::int64_t steps_ = 0;
+  std::size_t inputReadCount_ = 0;
   std::map<std::string, std::vector<Function>> functions_;
 
   Stream evaluate(const Expr& expr, Stream input);
