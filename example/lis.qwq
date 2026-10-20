@@ -1,133 +1,132 @@
 // an example program by AI
 
-halve : q -> q => (q _ 2) ~ ((q _ q) / q)
+halve : q -> q => (q_2) ~ ((q_q) / q)
 
-makeTails : q -> [q] => (q _ 9223372036854775807) ~ ((q _ q){}[q])
+makeTails : q -> [q] => (q_9223372036854775807) ~ ((q_q){}[q])
 
-dec : q -> q => (q _ 1) ~ ((q _ q) - q)
+dec : q -> q => (q_1) ~ ((q_q) - q)
 
-getRunTable : [q] _ q -> [q] => ([q]) _ (q : o)
+getRunTable : [q]_q -> [q] => ([q])_(q : o)
 
-getRunCount : [q] _ q -> q => ([q] : o) _ q
+getRunCount : [q]_q -> q => ([q] : o)_q
 
-hasRun : [q] _ q -> a =>
-	getRunCount ~
-	(q _ 0) ~
-	((q _ q) > a)
+hasRun : [q]_q -> a =>
+        getRunCount ~
+        (q_0) ~
+        ((q_q) > a)
 
-readCondition : [q] _ q -> a _ ([q] _ q) => ($) ~ (hasRun _ ([q] _ q))
+readCondition : [q]_q -> a_([q]_q) => ($) ~ (hasRun_([q]_q))
 
-// Search state: ((tails, x), (lo, hi)); hi is exclusive.
-getLeft : [q] _ q _ (q _ q) -> [q] _ q => ([q] _ q) _ ((q _ q) : o)
+getLeft : [q]_q_(q_q) -> [q]_q => ([q]_q)_((q_q) : o)
 
-getRight : [q] _ q _ (q _ q) -> q _ q => (([q] _ q) : o) _ (q _ q)
+getRight : [q]_q_(q_q) -> q_q => (([q]_q) : o)_(q_q)
 
-getTails : [q] _ q _ (q _ q) -> [q] => getLeft ~ (([q]) _ (q : o))
+getTails : [q]_q_(q_q) -> [q] => getLeft ~ (([q])_(q : o))
 
-getX : [q] _ q _ (q _ q) -> q => getLeft ~ (([q] : o) _ q)
+getX : [q]_q_(q_q) -> q => getLeft ~ (([q] : o)_q)
 
-getLow : [q] _ q _ (q _ q) -> q => getRight ~ (q _ (q : o))
+getLow : [q]_q_(q_q) -> q => getRight ~ (q_(q : o))
 
-getHigh : [q] _ q _ (q _ q) -> q => getRight ~ ((q : o) _ q)
+getHigh : [q]_q_(q_q) -> q => getRight ~ ((q : o)_q)
 
-mid : [q] _ q _ (q _ q) -> q =>
-	($) ~
-	(getLow _ getHigh) ~
-	((q _ q) + q) ~
-	halve
+mid : [q]_q_(q_q) -> q =>
+        ($) ~
+        (getLow_getHigh) ~
+        ((q_q) + q) ~
+        halve
 
-probeInput : [q] _ q _ (q _ q) -> [q] _ q => ($) ~ (getTails _ mid)
+probeInput : [q]_q_(q_q) -> [q]_q => ($) ~ (getTails_mid)
 
-readAndX : [q] _ q _ q -> q _ q => [] _ q
+readAndX : [q]_q_q -> q_q => []_q
 
-isBelow : [q] _ q _ (q _ q) -> a =>
-	($) ~
-	(probeInput _ getX) ~
-	readAndX ~
-	((q _ q) < a)
+isBelow : [q]_q_(q_q) -> a =>
+        ($) ~
+        (probeInput_getX) ~
+        readAndX ~
+        ((q_q) < a)
 
-notBelow : [q] _ q _ (q _ q) -> a => isBelow ~ !
+notBelow : [q]_q_(q_q) -> a => isBelow ~ !
 
-inRange : [q] _ q _ (q _ q) -> a =>
-	($) ~
-	(getLow _ getHigh) ~
-	((q _ q) < a)
+inRange : [q]_q_(q_q) -> a =>
+        ($) ~
+        (getLow_getHigh) ~
+        ((q_q) < a)
 
-belowCondition : [q] _ q _ (q _ q) -> a _ ([q] _ q _ (q _ q)) => ($) ~ (isBelow _ ([q] _ q _ (q _ q)))
+belowCondition : [q]_q_(q_q) -> a_([q]_q_(q_q)) => ($) ~ (isBelow_([q]_q_(q_q)))
 
-notBelowCondition : [q] _ q _ (q _ q) -> a _ ([q] _ q _ (q _ q)) => ($) ~ (notBelow _ ([q] _ q _ (q _ q)))
+notBelowCondition : [q]_q_(q_q) -> a_([q]_q_(q_q)) => ($) ~ (notBelow_([q]_q_(q_q)))
 
-rangeCondition : [q] _ q _ (q _ q) -> a _ ([q] _ q _ (q _ q)) => ($) ~ (inRange _ ([q] _ q _ (q _ q)))
+rangeCondition : [q]_q_(q_q) -> a_([q]_q_(q_q)) => ($) ~ (inRange_([q]_q_(q_q)))
 
-midPlusOne : [q] _ q _ (q _ q) -> q =>
-	mid ~
-	(q _ 1) ~
-	((q _ q) + q)
+midPlusOne : [q]_q_(q_q) -> q =>
+        mid ~
+        (q_1) ~
+        ((q_q) + q)
 
-boundsAfterLow : [q] _ q _ (q _ q) -> q _ q => ($) ~ (midPlusOne _ getHigh)
+boundsAfterLow : [q]_q_(q_q) -> q_q => ($) ~ (midPlusOne_getHigh)
 
-boundsAfterHigh : [q] _ q _ (q _ q) -> q _ q => ($) ~ (getLow _ mid)
+boundsAfterHigh : [q]_q_(q_q) -> q_q => ($) ~ (getLow_mid)
 
-setLow : [q] _ q _ (q _ q) -> [q] _ q _ (q _ q) => ($) ~ (getLeft _ boundsAfterLow)
+setLow : [q]_q_(q_q) -> [q]_q_(q_q) => ($) ~ (getLeft_boundsAfterLow)
 
-setHigh : [q] _ q _ (q _ q) -> [q] _ q _ (q _ q) => ($) ~ (getLeft _ boundsAfterHigh)
+setHigh : [q]_q_(q_q) -> [q]_q_(q_q) => ($) ~ (getLeft_boundsAfterHigh)
 
-searchStep : [q] _ q _ (q _ q) -> [q] _ q _ (q _ q) =>
-	(belowCondition ? setLow) ~
-	(
-		rangeCondition ?
-		(notBelowCondition ? setHigh)
-	)
+searchStep : [q]_q_(q_q) -> [q]_q_(q_q) =>
+        (belowCondition ? setLow) ~
+        (
+                rangeCondition ?
+                (notBelowCondition ? setHigh)
+        )
 
-search : [q] _ q _ (q _ q) -> [q] _ q _ (q _ q) => rangeCondition @ searchStep
+search : [q]_q_(q_q) -> [q]_q_(q_q) => rangeCondition @ searchStep
 
-tailsLength : [q] _ q -> q => (([q]) _ (q : o)) ~ []
+tailsLength : [q]_q -> q => (([q])_(q : o)) ~ []
 
-initialBounds : [q] _ q -> q _ q => (o _ 0) _ tailsLength
+initialBounds : [q]_q -> q_q => (o_0)_tailsLength
 
-initialSearch : [q] _ q -> [q] _ q _ (q _ q) => ($) ~ (([q] _ q) _ initialBounds)
+initialSearch : [q]_q -> [q]_q_(q_q) => ($) ~ (([q]_q)_initialBounds)
 
-searchResult : [q] _ q _ (q _ q) -> [q] _ q _ q => ($) ~ (getLeft _ getLow)
+searchResult : [q]_q_(q_q) -> [q]_q_q => ($) ~ (getLeft_getLow)
 
-lowerBound : [q] _ q -> [q] _ q _ q =>
-	initialSearch ~
-	search ~
-	searchResult
+lowerBound : [q]_q -> [q]_q_q =>
+        initialSearch ~
+        search ~
+        searchResult
 
-foundArray : [q] _ q _ q -> [q] => (([q] _ q) _ (q : o)) ~ (([q]) _ (q : o))
+foundArray : [q]_q_q -> [q] => (([q]_q)_(q : o)) ~ (([q])_(q : o))
 
-foundPosition : [q] _ q _ q -> q => (([q] _ q) : o) _ q
+foundPosition : [q]_q_q -> q => (([q]_q) : o)_q
 
-foundValue : [q] _ q _ q -> q => (([q] _ q) _ (q : o)) ~ (([q] : o) _ q)
+foundValue : [q]_q_q -> q => (([q]_q)_(q : o)) ~ (([q] : o)_q)
 
-writeTriple : [q] _ q _ q -> [q] _ q _ q =>
-	($) ~
-	($ _ ([q] _ q _ q)) ~
-	(foundArray _ foundPosition _ foundValue)
+writeTriple : [q]_q_q -> [q]_q_q =>
+        ($) ~
+        ($_([q]_q_q)) ~
+        (foundArray_foundPosition_foundValue)
 
-update : [q] _ q _ q -> [q] => writeTriple ~ []
+update : [q]_q_q -> [q] => writeTriple ~ []
 
 newTails : [q] -> [q] =>
-	(([q]) _ (#q)) ~
-	lowerBound ~
-	update
+        (([q])_(#q)) ~
+        lowerBound ~
+        update
 
-process : [q] _ q -> [q] _ q => newTails _ dec
+process : [q]_q -> [q]_q => newTails_dec
 
-run : [q] _ q -> [q] _ q => readCondition @ process
+run : [q]_q -> [q]_q => readCondition @ process
 
-initialState : q -> [q] _ q => ($) ~ (makeTails _ q)
+initialState : q -> [q]_q => ($) ~ (makeTails_q)
 
-answer : [q] _ q -> q =>
-	getRunTable ~
-	(([q]) _ 9223372036854775807) ~
-	lowerBound ~
-	foundPosition
+answer : [q]_q -> q =>
+        getRunTable ~
+        (([q])_9223372036854775807) ~
+        lowerBound ~
+        foundPosition
 
 main : o -> q =>
-	#q ~
-	initialState ~
-	run ~
-	answer
+        #q ~
+        initialState ~
+        run ~
+        answer
 
 main
