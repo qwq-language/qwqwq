@@ -24,10 +24,10 @@ const char* kHelp =
     "  :quit            leave the REPL\n"
     "  :type <expr>     print the type of an expression without running it\n"
     "  :dump <expr>     print the syntax tree with inferred types\n"
-    "  :defs            list the functions defined in this session\n"
+    "  :defs            list the names defined in this session\n"
     "\n"
     "Anything else is parsed as qwq source.\n"
-    "Definitions stay in scope for later lines.\n"
+    "Functions and class types stay in scope for later lines.\n"
     "Expressions whose domain is o are evaluated and their resulting stream is printed.\n";
 
 std::string trim(const std::string& text) {
@@ -60,14 +60,14 @@ bool isIncomplete(const std::string& text) {
   return inString || depth > 0;
 }
 
-/// A line is a definition when it parses as one: `name => body`, or
-/// `name : A -> B => body`.  Parsing is the only honest test now that a
-/// definition no longer starts with a keyword, and a failed parse is reported
-/// by the caller anyway.
+/// A line starts with a declaration when parsing finds a class declaration or a
+/// function definition. Parsing is the only honest test now that neither uses
+/// a declaration keyword.
 bool startsWithDefinition(const std::string& text) {
   try {
     const std::vector<Token> tokens = tokenize(text);
-    return !parse(tokens).definitions.empty();
+    const Program program = parse(tokens);
+    return !program.typeAliases.empty() || !program.definitions.empty();
   } catch (const Error&) {
     return false;
   }
@@ -85,36 +85,64 @@ class Session {
         stepLimit_(stepLimit),
         promptForInput_(promptForInput) {}
 
-  /// Validates a definition and keeps it in scope for later lines.
+  /// Validates a declaration and keeps it in scope for later lines.
   void define(const std::string& source) {
+    const std::size_t sourceOffset = definitions_.size();
     const std::string combined = definitions_ + source + "\n";
     Program program = parse(tokenize(combined));
     check(program);
 
-    if (program.definitions.empty()) {
-      errors_ << "error: expected a definition\n";
+    const TypeAliasDefinition* lastAlias = nullptr;
+    for (const TypeAliasDefinition& alias : program.typeAliases) {
+      if (alias.position >= sourceOffset) lastAlias = &alias;
+    }
+    const Definition* lastDefinition = nullptr;
+    for (const Definition& definition : program.definitions) {
+      if (definition.position >= sourceOffset) lastDefinition = &definition;
+    }
+    if (lastAlias == nullptr && lastDefinition == nullptr) {
+      errors_ << "error: expected a function definition or class declaration\n";
       return;
     }
 
     definitions_ = combined;
-    show(program.definitions.back());  // report only the line just entered
+    if (lastAlias != nullptr &&
+        (lastDefinition == nullptr || lastAlias->position > lastDefinition->position)) {
+      show(*lastAlias);
+    } else {
+      show(*lastDefinition);
+    }
   }
 
   void listDefinitions() const {
     if (definitions_.empty()) {
-      output_ << "no functions defined\n";
+      output_ << "no definitions or class types\n";
       return;
     }
     Program program = parse(tokenize(definitions_));
     check(program);
-    for (const Definition& definition : program.definitions) show(definition);
+    std::size_t aliasIndex = 0;
+    std::size_t definitionIndex = 0;
+    while (aliasIndex < program.typeAliases.size() ||
+           definitionIndex < program.definitions.size()) {
+      const bool printAlias =
+          definitionIndex == program.definitions.size() ||
+          (aliasIndex < program.typeAliases.size() &&
+           program.typeAliases[aliasIndex].position <
+               program.definitions[definitionIndex].position);
+      if (printAlias) {
+        show(program.typeAliases[aliasIndex++]);
+      } else {
+        show(program.definitions[definitionIndex++]);
+      }
+    }
   }
 
   void typeOf(const std::string& line) {
     const Program program = parseChecked(line);
     const Expr& main = *program.main;
-    output_ << toString(main.in, main.domainItems) << " -> "
-            << toString(main.out, main.codomainItems) << "\n";
+    output_ << toString(main.in) << " -> "
+            << toString(main.out) << "\n";
   }
 
   void dumpOf(const std::string& line) {
@@ -126,18 +154,19 @@ class Session {
     const Program program = parseChecked(line);
     const Expr& main = *program.main;
 
-    output_ << "[" << toString(main.in, main.domainItems) << " -> "
-            << toString(main.out, main.codomainItems) << "]\n";
+    output_ << "[" << toString(main.in) << " -> "
+            << toString(main.out) << "]\n";
 
     if (!main.in.empty()) {
       output_ << "(expects an input stream of type "
-              << toString(main.in, main.domainItems)
+              << toString(main.in)
               << "; not evaluated)\n";
       return;
     }
 
     Interpreter interpreter(output_, input_, stepLimit_, program.definitions,
-                            promptForInput_ ? &output_ : nullptr);
+                            promptForInput_ ? &output_ : nullptr,
+                            &program.specializations);
     Stream result;
     try {
       result = interpreter.run(main, {});
@@ -177,10 +206,31 @@ class Session {
     return program;
   }
 
+  void show(const TypeAliasDefinition& alias) const {
+    output_ << alias.name;
+    if (!alias.parameters.empty()) {
+      output_ << "<";
+      for (std::size_t i = 0; i < alias.parameters.size(); ++i) {
+        if (i != 0) output_ << ", ";
+        output_ << alias.parameters[i];
+      }
+      output_ << ">";
+    }
+    output_ << " = " << portSource(alias.body) << "\n";
+  }
+
   void show(const Definition& definition) const {
-    output_ << definition.name << " : "
-            << toString(definition.in, definition.domainItems) << " -> "
-            << toString(definition.out, definition.codomainItems) << "\n";
+    output_ << definition.name;
+    if (!definition.templateParameters.empty()) {
+      output_ << "<";
+      for (std::size_t i = 0; i < definition.templateParameters.size(); ++i) {
+        if (i != 0) output_ << ", ";
+        output_ << definition.templateParameters[i];
+      }
+      output_ << ">";
+    }
+    output_ << " : " << toString(definition.in) << " -> "
+            << toString(definition.out) << "\n";
   }
 };
 

@@ -9,20 +9,31 @@
 
 namespace qwq {
 
-/// Signature of a named morphism: its declared domain and codomain words.
-using Signature = std::pair<Word, Word>;
+/// Signature of a named morphism: one input stream type and one output stream type.
+using Signature = std::pair<StreamType, StreamType>;
 
-/// Every function may have several overloads.  Two overloads of the same name
-/// must differ in their domain, so a call is resolved by the type of the
-/// stream it receives — the same rule that lets `-` mean both negation and
-/// subtraction.
-using Overloads = std::vector<Signature>;
+/// A function overload may be concrete or parameterized by type variables.
+struct FunctionOverload {
+  Signature signature;
+  std::vector<std::string> templateParameters;
+  const Definition* definition = nullptr;
+};
 
-/// The set of names in scope.
-using Environment = std::map<std::string, Overloads>;
+using Overloads = std::vector<FunctionOverload>;
+using TypeBindings = std::map<std::string, StreamType>;
+
+/// Names in scope. Class types are kept separate from functions so a
+/// structural type name is interpreted only in a port/type position.
+struct Environment {
+  std::map<std::string, Overloads> functions;
+  std::map<std::string, const TypeAliasDefinition*> typeAliases;
+  TypeBindings typeBindings;
+  std::vector<Definition>* specializations = nullptr;
+  std::vector<std::string> activeSpecializations;
+};
 
 /// Type checks a program in place: every definition gets its resolved
-/// signature, every node its `in` and `out` words, overloaded calls are
+/// signature, every node its input and output stream types, overloaded calls are
 /// resolved, and ambiguous cores are normalised.
 ///
 /// Definitions are visible to the definitions that follow them and to their

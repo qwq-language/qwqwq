@@ -1,46 +1,37 @@
 #include "value.hpp"
 
-#include <algorithm>
-#include <iterator>
 #include <ostream>
+#include <utility>
 
 namespace qwq {
 
-Elements::Elements(std::vector<std::vector<Value>> words) : total_(words.size()) {
-  chunks_.reserve((words.size() + kChunkSize - 1) / kChunkSize);
-  for (std::size_t begin = 0; begin < words.size(); begin += kChunkSize) {
-    const std::size_t end = std::min(begin + kChunkSize, words.size());
-    Chunk chunk(std::make_move_iterator(words.begin() + static_cast<std::ptrdiff_t>(begin)),
-                std::make_move_iterator(words.begin() + static_cast<std::ptrdiff_t>(end)));
-    chunks_.push_back(std::make_shared<const Chunk>(std::move(chunk)));
-  }
+Elements::Elements(std::vector<StreamValue> streams)
+    : streams_(std::move(streams)) {}
+
+const Elements::StreamValue& Elements::operator[](std::size_t index) const {
+  return streams_[index];
 }
 
-const std::vector<Value>& Elements::operator[](std::size_t index) const {
-  return (*chunks_[index / kChunkSize])[index % kChunkSize];
+void Elements::replace(std::size_t index, StreamValue stream) {
+  streams_[index] = std::move(stream);
 }
 
-Elements Elements::with(std::size_t index, std::vector<Value> word) const {
+Elements Elements::with(std::size_t index, StreamValue stream) const {
   Elements result = *this;
-  const std::size_t which = index / kChunkSize;
-  auto chunk = std::make_shared<Chunk>(*result.chunks_[which]);
-  (*chunk)[index % kChunkSize] = std::move(word);
-  result.chunks_[which] = std::move(chunk);
+  result.replace(index, std::move(stream));
   return result;
 }
 
 Elements Elements::concatenated(const Elements& other) const {
-  std::vector<std::vector<Value>> words;
-  words.reserve(size() + other.size());
-  for (std::size_t i = 0; i < size(); ++i) words.push_back((*this)[i]);
-  for (std::size_t i = 0; i < other.size(); ++i) words.push_back(other[i]);
-  return Elements(std::move(words));
+  std::vector<StreamValue> streams = streams_;
+  streams.insert(streams.end(), other.streams_.begin(), other.streams_.end());
+  return Elements(std::move(streams));
 }
 
 bool Elements::operator==(const Elements& other) const {
   if (size() != other.size()) return false;
   for (std::size_t i = 0; i < size(); ++i) {
-    if ((*this)[i] != other[i]) return false;
+    if (streams_[i] != other.streams_[i]) return false;
   }
   return true;
 }
@@ -55,7 +46,7 @@ Value Value::makeInt(std::int64_t value) {
 Value Value::makeStr(std::string value) {
   Value result;
   result.kind = Kind::Str;
-  result.text = std::move(value);
+  result.text = std::make_shared<const std::string>(std::move(value));
   return result;
 }
 
@@ -69,7 +60,15 @@ Value Value::makeBool(bool value) {
 Value Value::makeArray(Elements elements) {
   Value result;
   result.kind = Kind::Array;
-  result.elements = std::make_shared<const Elements>(std::move(elements));
+  result.elements = std::make_shared<Elements>(std::move(elements));
+  return result;
+}
+
+Value Value::makePack(Value left, Value right) {
+  Value result;
+  result.kind = Kind::Pack;
+  result.pack = std::make_shared<PackValue>(
+      PackValue{std::move(left), std::move(right)});
   return result;
 }
 
@@ -82,11 +81,13 @@ bool operator==(const Value& a, const Value& b) {
     case Value::Kind::Int:
       return a.integer == b.integer;
     case Value::Kind::Str:
-      return a.text == b.text;
+      return *a.text == *b.text;
     case Value::Kind::Bool:
       return a.boolean == b.boolean;
     case Value::Kind::Array:
       return *a.elements == *b.elements;
+    case Value::Kind::Pack:
+      return a.pack->left == b.pack->left && a.pack->right == b.pack->right;
   }
   return false;
 }
@@ -94,12 +95,12 @@ bool operator==(const Value& a, const Value& b) {
 std::ostream& operator<<(std::ostream& out, const Value& value) {
   switch (value.kind) {
     case Value::Kind::Void:
-      break;  // no payload, nothing to print
+      break;
     case Value::Kind::Int:
       out << value.integer;
       break;
     case Value::Kind::Str:
-      out << value.text;  // escapes were resolved by the lexer
+      out << *value.text;
       break;
     case Value::Kind::Bool:
       out << (value.boolean ? 1 : 0);
@@ -111,6 +112,9 @@ std::ostream& operator<<(std::ostream& out, const Value& value) {
         for (const Value& element : (*value.elements)[i]) out << element;
       }
       out << "]";
+      break;
+    case Value::Kind::Pack:
+      out << "(" << value.pack->left << "_" << value.pack->right << ")";
       break;
   }
   return out;

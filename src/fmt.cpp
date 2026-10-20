@@ -35,9 +35,8 @@ bool isPort(const Token& token) {
 }
 
 /// `~ ; @ ?` -- the connectors that hold a chain of stages together.
-/// `:` and `_` are left out on purpose: `(q : o)` and `[q]_q_q` are ordinary
-/// faces and port words, and letting them open a block would bury the shape
-/// of the program under noise.
+/// `:` and `_` are not composition stages; `_` is handled separately as a
+/// Pack/append separator by the layout code below.
 bool isLayoutTrigger(const Token& token) {
   switch (token.kind) {
     case Token::Kind::Compose:
@@ -52,58 +51,174 @@ bool touching(const Token& left, const Token& right) {
   return left.position + left.spelling.size() == right.position;
 }
 
-/// Which pairs of tokens are written without a space between them.
-///
-/// Whitespace is insignificant everywhere except around `_`, so these pairs are
-/// a matter of taste, not of meaning: they keep the idioms of the language
-/// (`o5q`, `o"text"s`, `o-3q`, `o{o1q o2q o3q}[q]`, `q_q`) in one piece.
-std::vector<bool> computeGlue(const std::vector<Token>& tokens) {
+/// A newline may continue a template argument list at a separator or a
+/// delimiter. Otherwise it is a declaration/expression boundary, so do not
+/// pair a comparison core with a `>` from a later line.
+bool continuesTemplateAcrossLine(const Token& previous, const Token& current) {
+  if (previous.kind == Token::Kind::Comment ||
+      current.kind == Token::Kind::Comment) {
+    return false;
+  }
+  if (previous.kind == Token::Kind::Comma ||
+      (previous.kind == Token::Kind::Operator && previous.text == "<")) {
+    return true;
+  }
+  if (previous.kind == Token::Kind::LeftParen ||
+      previous.kind == Token::Kind::LeftBracket ||
+      previous.kind == Token::Kind::LeftBrace) {
+    return true;
+  }
+  if (current.kind == Token::Kind::Comma ||
+      current.kind == Token::Kind::RightParen ||
+      current.kind == Token::Kind::RightBracket ||
+      current.kind == Token::Kind::RightBrace) {
+    return true;
+  }
+  return current.kind == Token::Kind::Operator &&
+         (current.text == ">" ||
+          (current.text == "<" && previous.kind == Token::Kind::Identifier));
+}
+
+/// List commas are printed without a preceding space and with one following
+/// space. Underscores are glued to both adjacent tokens in every context; the
+/// parser, not whitespace, determines whether one joins a Pack or appends.
+std::vector<bool> computeGlue(const std::vector<Token>& tokens,
+                              const std::vector<bool>& hashReshapes) {
   std::vector<bool> glue(tokens.size(), false);
+  std::vector<bool> genericGlue(tokens.size(), false);
+  const auto markTemplate = [&](std::size_t open) {
+    if (open + 1 >= tokens.size()) return;
+    int angleDepth = 1;
+    int parenDepth = 0;
+    int bracketDepth = 0;
+    int braceDepth = 0;
+    for (std::size_t j = open + 1; j < tokens.size(); ++j) {
+      if (tokens[j].lineBreakBefore &&
+          !continuesTemplateAcrossLine(tokens[j - 1], tokens[j])) {
+        break;
+      }
+      if (tokens[j].kind == Token::Kind::Comment) break;
+      if (tokens[j].kind == Token::Kind::LeftParen) {
+        ++parenDepth;
+        continue;
+      }
+      if (tokens[j].kind == Token::Kind::RightParen) {
+        if (parenDepth > 0) --parenDepth;
+        continue;
+      }
+      if (tokens[j].kind == Token::Kind::LeftBracket) {
+        ++bracketDepth;
+        continue;
+      }
+      if (tokens[j].kind == Token::Kind::RightBracket) {
+        if (bracketDepth > 0) --bracketDepth;
+        continue;
+      }
+      if (tokens[j].kind == Token::Kind::LeftBrace) {
+        ++braceDepth;
+        continue;
+      }
+      if (tokens[j].kind == Token::Kind::RightBrace) {
+        if (braceDepth > 0) --braceDepth;
+        continue;
+      }
+      if (parenDepth != 0 || bracketDepth != 0 || braceDepth != 0 ||
+          tokens[j].kind != Token::Kind::Operator) {
+        continue;
+      }
+      if (tokens[j].text == "<") {
+        ++angleDepth;
+      } else if (tokens[j].text == ">" && --angleDepth == 0) {
+        genericGlue[open] = true;
+        genericGlue[open + 1] = true;
+        genericGlue[j] = true;
+        break;
+      }
+    }
+  };
+  for (std::size_t i = 0; i + 1 < tokens.size(); ++i) {
+    if (tokens[i].kind == Token::Kind::Identifier &&
+        tokens[i + 1].kind == Token::Kind::Operator &&
+        tokens[i + 1].text == "<") {
+      markTemplate(i + 1);
+    }
+    if (i + 4 < tokens.size() &&
+        tokens[i].kind == Token::Kind::Identifier &&
+        tokens[i].text == "operator" &&
+        tokens[i + 1].kind == Token::Kind::LeftParen &&
+        tokens[i + 2].kind == Token::Kind::Operator &&
+        tokens[i + 3].kind == Token::Kind::RightParen) {
+      glue[i + 1] = true;
+      glue[i + 2] = true;
+      glue[i + 3] = true;
+      if (tokens[i + 4].kind == Token::Kind::Operator &&
+          tokens[i + 4].text == "<") {
+        markTemplate(i + 4);
+      }
+    }
+    if (i + 5 < tokens.size() &&
+        tokens[i].kind == Token::Kind::Identifier &&
+        tokens[i].text == "operator" &&
+        tokens[i + 1].kind == Token::Kind::LeftParen &&
+        tokens[i + 2].kind == Token::Kind::LeftBracket &&
+        tokens[i + 3].kind == Token::Kind::RightBracket &&
+        tokens[i + 4].kind == Token::Kind::RightParen) {
+      glue[i + 1] = true;
+      glue[i + 2] = true;
+      glue[i + 3] = true;
+      glue[i + 4] = true;
+      if (tokens[i + 5].kind == Token::Kind::Operator &&
+          tokens[i + 5].text == "<") {
+        markTemplate(i + 5);
+      }
+    }
+  }
+
   for (std::size_t i = 1; i < tokens.size(); ++i) {
     const Token& prev = tokens[i - 1];
     const Token& cur = tokens[i];
 
+    if (genericGlue[i]) {
+      glue[i] = true;
+      continue;
+    }
+    if (prev.kind == Token::Kind::Underscore ||
+        cur.kind == Token::Kind::Underscore) {
+      glue[i] = true;
+      continue;
+    }
     if (isOpening(prev) || isClosing(cur)) {
-      glue[i] = true;  // `(q_q)`, `{o1q o2q o3q}`: no padding inside the brackets
-      continue;
-    }
-    // o#q: the read core is written against both of its ports, like a literal
-    if ((prev.kind == Token::Kind::Operator && prev.text == "#") ||
-        (cur.kind == Token::Kind::Operator && cur.text == "#")) {
       glue[i] = true;
       continue;
     }
-    if (prev.kind == Token::Kind::Join || cur.kind == Token::Kind::Join) {
+    if (cur.kind == Token::Kind::Comma) {
       glue[i] = true;
       continue;
     }
-    // o5q, o"text"s: a literal core right after the void port
-    if (prev.kind == Token::Kind::VoidPort &&
-        (cur.kind == Token::Kind::IntLiteral || cur.kind == Token::Kind::StringLiteral)) {
+    // Read-style `#` touches adjacent port annotations; reshape-style `#` is
+    // spaced like an operator.
+    if (((cur.kind == Token::Kind::Operator && cur.text == "#" &&
+          !hashReshapes[i]) &&
+         (isPort(prev) || prev.kind == Token::Kind::RightBracket ||
+          prev.kind == Token::Kind::RightParen)) ||
+        ((prev.kind == Token::Kind::Operator && prev.text == "#" &&
+          !hashReshapes[i - 1]) &&
+         (isPort(cur) || cur.kind == Token::Kind::LeftBracket ||
+          cur.kind == Token::Kind::LeftParen))) {
       glue[i] = true;
       continue;
     }
-    // o-3q: a negative literal
-    if (prev.kind == Token::Kind::VoidPort && cur.kind == Token::Kind::Operator &&
-        cur.text == "-") {
-      glue[i] = true;
-      continue;
-    }
-    // 5q, "text"s: the port that types a literal
-    if ((prev.kind == Token::Kind::IntLiteral || prev.kind == Token::Kind::StringLiteral) &&
-        isPort(cur)) {
-      glue[i] = true;
-      continue;
-    }
-    // -3: only when the sign was written against the number
+    // Keep a negative number visually attached to its sign.
     if (prev.kind == Token::Kind::Operator && prev.text == "-" &&
         cur.kind == Token::Kind::IntLiteral && touching(prev, cur)) {
       glue[i] = true;
       continue;
     }
-    // o{o1q o2q o3q}[q]: an array literal core and the type that follows it.  The
-    // `[]` index core is an ordinary core, so `[] [q]` keeps its spaces.
-    if (prev.kind == Token::Kind::VoidPort && cur.kind == Token::Kind::LeftBrace) {
+    // An array literal/constructor core is attached to its input port; `[]`
+    // remains an ordinary operator and is separated from the type after it.
+    if ((isPort(prev) || prev.kind == Token::Kind::RightBracket ||
+         prev.kind == Token::Kind::RightParen) &&
+        cur.kind == Token::Kind::LeftBrace) {
       glue[i] = true;
       continue;
     }
@@ -113,6 +228,54 @@ std::vector<bool> computeGlue(const std::vector<Token>& tokens) {
     }
   }
   return glue;
+}
+
+void collectHashReshapePositions(const Expr& expr,
+                                 std::vector<std::size_t>& positions);
+
+void collectHashReshapePositions(const Port& port,
+                                 std::vector<std::size_t>& positions);
+
+bool syntacticallyEmpty(const Port& port) {
+  for (const PortPart& part : port.parts) {
+    if (part.kind == PortPart::Kind::Primitive) {
+      if (!part.type.empty()) return false;
+    } else if (part.kind == PortPart::Kind::Group) {
+      if (!syntacticallyEmpty(*part.inner)) return false;
+    } else {
+      return false;
+    }
+  }
+  return true;
+}
+
+void collectHashReshapePositions(const Port& port,
+                                 std::vector<std::size_t>& positions) {
+  for (const PortPart& part : port.parts) {
+    if (part.inner) collectHashReshapePositions(*part.inner, positions);
+    if (part.expression) collectHashReshapePositions(*part.expression, positions);
+    for (const std::unique_ptr<Port>& argument : part.arguments) {
+      if (argument) collectHashReshapePositions(*argument, positions);
+    }
+  }
+}
+
+void collectHashReshapePositions(const Expr& expr,
+                                 std::vector<std::size_t>& positions) {
+  if (expr.kind == Expr::Kind::Face && expr.core == Core::Hash &&
+      expr.hasDomain && !syntacticallyEmpty(expr.domain)) {
+    positions.push_back(expr.corePosition);
+  }
+  if (expr.hasDomain) collectHashReshapePositions(expr.domain, positions);
+  if (expr.hasCodomain) collectHashReshapePositions(expr.codomain, positions);
+  for (const Port& argument : expr.templateArguments) {
+    collectHashReshapePositions(argument, positions);
+  }
+  for (const ExprPtr& element : expr.elements) {
+    if (element) collectHashReshapePositions(*element, positions);
+  }
+  if (expr.left) collectHashReshapePositions(*expr.left, positions);
+  if (expr.right) collectHashReshapePositions(*expr.right, positions);
 }
 
 std::vector<std::size_t> lineStartTable(const std::string& source) {
@@ -211,7 +374,7 @@ std::vector<Line> layoutBody(const std::vector<Token>& tokens,
   std::vector<std::size_t> chainDepth(n, 0);
   std::vector<std::size_t> ownStages(n, 0);
   std::vector<bool> ownChain(n, false);
-  std::vector<bool> ownAppend(n, false);
+  std::vector<bool> ownUnderscore(n, false);
   std::vector<bool> expanded(n, false);
   for (std::size_t i = n; i-- > 0;) {
     if (!isOpening(tokens[begin + i]) || match[i] == n) continue;
@@ -221,7 +384,8 @@ std::vector<Line> layoutBody(const std::vector<Token>& tokens,
     for (std::size_t k = i + 1; k < match[i]; ++k) {
       if (depth[k] != inner) continue;
       if (isLayoutTrigger(tokens[begin + k])) ++ownStages[i];
-      ownAppend[i] = ownAppend[i] || tokens[begin + k].kind == Token::Kind::Append;
+      ownUnderscore[i] =
+          ownUnderscore[i] || tokens[begin + k].kind == Token::Kind::Underscore;
       if (isOpening(tokens[begin + k])) {
         deepest = std::max(deepest, chainDepth[k]);
         childExpanded = childExpanded || expanded[k];
@@ -238,13 +402,13 @@ std::vector<Line> layoutBody(const std::vector<Token>& tokens,
   // opened -- is hugged against the lines it wraps.
   std::vector<bool> block(n, false);
   for (std::size_t i = 0; i < n; ++i) {
-    block[i] = expanded[i] && (ownChain[i] || ownAppend[i]);
+    block[i] = expanded[i] && (ownChain[i] || ownUnderscore[i]);
   }
 
   // A block puts each of its operands on a line of its own, splitting at the
-  // loosest connector it has: its stages when it is a chain, the `_` between
-  // its faces when it wraps something opened.  The connector ends the line
-  // it closes.  A hugged group adds no breaks of its own at all.
+  // loosest connector it has: its stages when it is a chain, underscores when
+  // it wraps something opened. The connector ends the line it closes. A hugged
+  // group adds no breaks of its own at all.
   for (std::size_t i = 0; i < n; ++i) {
     if (!expanded[i]) continue;
     const std::size_t close = match[i];
@@ -257,7 +421,7 @@ std::vector<Line> layoutBody(const std::vector<Token>& tokens,
       if (depth[k] != inner) continue;
       const Token& token = tokens[begin + k];
       const bool separator =
-          ownChain[i] ? isLayoutTrigger(token) : token.kind == Token::Kind::Append;
+          ownChain[i] ? isLayoutTrigger(token) : token.kind == Token::Kind::Underscore;
       if (separator) breaks[k + 1] = true;
     }
   }
@@ -286,7 +450,7 @@ std::vector<Line> layoutBody(const std::vector<Token>& tokens,
         if (depth[i] != 0) continue;
         const Token& token = tokens[begin + i];
         const bool separator =
-            rootChain ? isLayoutTrigger(token) : token.kind == Token::Kind::Append;
+            rootChain ? isLayoutTrigger(token) : token.kind == Token::Kind::Underscore;
         if (separator) breaks[i + 1] = true;
       }
     }
@@ -364,34 +528,66 @@ std::string format(const std::string& source) {
   tokens.erase(std::remove_if(tokens.begin(), tokens.end(),
                               [](const Token& token) { return token.kind == Token::Kind::End; }),
                tokens.end());
-  const std::vector<bool> glue = computeGlue(tokens);
+
+  std::vector<std::size_t> hashReshapePositions;
+  for (const TypeAliasDefinition& alias : program.typeAliases) {
+    collectHashReshapePositions(alias.body, hashReshapePositions);
+  }
+  for (const Definition& definition : program.definitions) {
+    collectHashReshapePositions(definition.domain, hashReshapePositions);
+    collectHashReshapePositions(definition.codomain, hashReshapePositions);
+    if (definition.body) {
+      collectHashReshapePositions(*definition.body, hashReshapePositions);
+    }
+  }
+  if (program.main) collectHashReshapePositions(*program.main, hashReshapePositions);
+
+  std::vector<bool> hashReshapes(tokens.size(), false);
+  for (const std::size_t position : hashReshapePositions) {
+    const auto token = std::lower_bound(
+        tokens.begin(), tokens.end(), position,
+        [](const Token& item, std::size_t offset) { return item.position < offset; });
+    if (token != tokens.end() && token->position == position &&
+        token->kind == Token::Kind::Operator && token->text == "#") {
+      hashReshapes[static_cast<std::size_t>(token - tokens.begin())] = true;
+    }
+  }
+  const std::vector<bool> glue = computeGlue(tokens, hashReshapes);
   const std::vector<std::size_t> lineStarts = lineStartTable(source);
 
-  // A unit is one definition and the main expression; the parser records the
-  // byte range of every definition, so the units follow the real syntax tree.
+  // A unit is one class declaration, function definition, or the main expression;
+  // source ranges keep declarations in their written order.
   std::vector<std::pair<std::size_t, std::size_t>> cuts;  // (name index, body end)
-  for (const Definition& definition : program.definitions) {
+  const auto addCut = [&](std::size_t position, std::size_t endPosition) {
     const std::size_t begin = static_cast<std::size_t>(
-        std::lower_bound(tokens.begin(), tokens.end(), definition.position,
-                         [](const Token& token, std::size_t position) {
-                           return token.position < position;
+        std::lower_bound(tokens.begin(), tokens.end(), position,
+                         [](const Token& token, std::size_t offset) {
+                           return token.position < offset;
                          }) -
         tokens.begin());
     std::size_t end = static_cast<std::size_t>(
-        std::lower_bound(tokens.begin(), tokens.end(), definition.end,
-                         [](const Token& token, std::size_t position) {
-                           return token.position < position;
+        std::lower_bound(tokens.begin(), tokens.end(), endPosition,
+                         [](const Token& token, std::size_t offset) {
+                           return token.position < offset;
                          }) -
         tokens.begin());
     // A comment written after the last body token on the same line stays with
-    // the definition it annotates.
-    while (end < tokens.size() && tokens[end].kind == Token::Kind::Comment &&
+    // the declaration it annotates.
+    while (end < tokens.size() && end > 0 &&
+           tokens[end].kind == Token::Kind::Comment &&
            lineOf(lineStarts, tokens[end - 1].position) ==
                lineOf(lineStarts, tokens[end].position)) {
       ++end;
     }
     cuts.emplace_back(begin, end);
+  };
+  for (const TypeAliasDefinition& alias : program.typeAliases) {
+    addCut(alias.position, alias.end);
   }
+  for (const Definition& definition : program.definitions) {
+    addCut(definition.position, definition.end);
+  }
+  std::sort(cuts.begin(), cuts.end());
 
   std::vector<Range> units;
   std::size_t cursor = 0;
@@ -478,8 +674,6 @@ std::string format(const std::string& source) {
   if (!result.empty()) result += '\n';
 
   // Layout must never change meaning: the token stream has to survive the trip.
-  // (Only the `_` gluing rule is whitespace sensitive, and it is the one rule
-  // the spacing table is careful about.)  This is an internal check.
   std::vector<Token> again = tokenize(result);
   std::vector<Token> before;
   for (const Token& token : tokens) {

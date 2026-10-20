@@ -179,8 +179,17 @@ int main(int argc, char** argv) {
     qwq::check(program);
 
     if (!program.main) {
+      if (options.dumpTree) {
+        qwq::dump(program, std::cout);
+        return 0;
+      }
       if (options.checkOnly) {
-        std::cout << "ok: " << program.definitions.size() << " definition(s)\n";
+        if (program.typeAliases.empty()) {
+          std::cout << "ok: " << program.definitions.size() << " definition(s)\n";
+        } else {
+          std::cout << "ok: " << program.typeAliases.size() << " class type(s), "
+                    << program.definitions.size() << " definition(s)\n";
+        }
       }
       return 0;
     }
@@ -190,7 +199,7 @@ int main(int argc, char** argv) {
     if (!main.in.empty()) {
       throw qwq::Error(
           "program is not closed: it consumes a stream of type " +
-              qwq::toString(main.in, main.domainItems) +
+              qwq::toString(main.in) +
               ", but a program must start from the empty stream o "
               "(every input has to be produced by the program itself)",
           main.position);
@@ -202,13 +211,14 @@ int main(int argc, char** argv) {
     }
 
     if (options.checkOnly) {
-      std::cout << "ok: " << qwq::toString(main.in, main.domainItems) << " -> "
-                << qwq::toString(main.out, main.codomainItems) << "\n";
+      std::cout << "ok: " << qwq::toString(main.in) << " -> "
+                << qwq::toString(main.out) << "\n";
       return 0;
     }
 
     qwq::Interpreter interpreter(std::cout, std::cin, options.stepLimit,
-                                 program.definitions);
+                                 program.definitions, nullptr,
+                                 &program.specializations);
     for (const qwq::Value& value : interpreter.run(main, {})) {
       std::cout << value;
     }

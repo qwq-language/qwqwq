@@ -6,8 +6,12 @@ namespace qwq {
 
 /// Rewrites `source` into canonical form:
 ///
-///   * one space between two items, none inside `( )`, `[ ]` or a joined word;
-///   * `o5q`, `o-3q`, `o"text"s`, `o#q` and array literals stay glued;
+///   * one space between items, no padding inside brackets, list commas formatted
+///     as `, `, and underscores glued to both adjacent items in Pack and append
+///     contexts;
+///   * `#` touches adjacent read annotations (`#q`, `o#q`) and is spaced like
+///     an operator for Pack reshaping; template types use `Pair<X, Y>`;
+///     array literals/constructors stay glued;
 ///   * a chain of stages (`~ ; @ ?`) whose two operands hold no chain of their
 ///     own is a leaf and stays on one line; a longer chain, or one holding
 ///     another chain, is written as a block: the brackets get a line of their

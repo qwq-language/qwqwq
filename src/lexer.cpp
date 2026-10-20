@@ -84,7 +84,7 @@ std::vector<Token> tokenize(const std::string& source, bool keepComments) {
       continue;
     }
 
-    // Comment extension: '//' to end of line.  '#' is now the input core.
+    // Comment extension: '//' to end of line.
     if (c == '/' && i + 1 < source.size() && source[i + 1] == '/') {
       const std::size_t begin = i;
       while (i < source.size() && source[i] != '\n') ++i;
@@ -95,8 +95,8 @@ std::vector<Token> tokenize(const std::string& source, bool keepComments) {
       continue;
     }
 
-    // Words: a single eye character, `def`, or a function name.
-    // Names are letters only, so `o3q` still lexes as o, 3, q.
+    // Words: a single eye character or an identifier (function/type name).
+    // Names are letters only, so `Point7` still lexes as Point, 7.
     if (isLetter(c)) {
       const std::size_t begin = i;
       while (i < source.size() && isLetter(source[i])) ++i;
@@ -116,6 +116,10 @@ std::vector<Token> tokenize(const std::string& source, bool keepComments) {
       case ']': tokens.push_back(makeText(Token::Kind::RightBracket, "]", i++)); continue;
       case '{': tokens.push_back(makeText(Token::Kind::LeftBrace, "{", i++)); continue;
       case '}': tokens.push_back(makeText(Token::Kind::RightBrace, "}", i++)); continue;
+      case ',': tokens.push_back(makeText(Token::Kind::Comma, ",", i++)); continue;
+      case '_':
+        tokens.push_back(makeText(Token::Kind::Underscore, "_", i++));
+        continue;
       case '~': tokens.push_back(makeText(Token::Kind::Compose, "~", i++)); continue;
       case ';': tokens.push_back(makeText(Token::Kind::Tee, ";", i++)); continue;
       case ':': tokens.push_back(makeText(Token::Kind::Coerce, ":", i++)); continue;
@@ -176,14 +180,6 @@ std::vector<Token> tokenize(const std::string& source, bool keepComments) {
       continue;
     }
 
-    if (c == '_') {
-      const bool gluedLeft = i > 0 && !isBlank(source[i - 1]);
-      const bool gluedRight = i + 1 < source.size() && !isBlank(source[i + 1]);
-      const bool joined = gluedLeft && gluedRight;
-      tokens.push_back(makeText(joined ? Token::Kind::Join : Token::Kind::Append, "_", i++));
-      continue;
-    }
-
     // Two-character tokens.
     if (i + 1 < source.size()) {
       const std::string pair = source.substr(i, 2);
@@ -204,6 +200,11 @@ std::vector<Token> tokenize(const std::string& source, bool keepComments) {
       }
     }
 
+    if (c == '=') {
+      tokens.push_back(makeText(Token::Kind::Equals, "=", i++));
+      continue;
+    }
+
     if (isOperatorCharacter(c)) {
       tokens.push_back(makeText(Token::Kind::Operator, std::string(1, c), i++));
       continue;
@@ -214,6 +215,15 @@ std::vector<Token> tokenize(const std::string& source, bool keepComments) {
 
   Token end = makeToken(Token::Kind::End, source.size());
   tokens.push_back(std::move(end));
+
+  for (std::size_t j = 1; j < tokens.size(); ++j) {
+    const Token& previous = tokens[j - 1];
+    const std::size_t gapBegin = previous.position + previous.spelling.size();
+    if (gapBegin < tokens[j].position) {
+      const std::string gap = source.substr(gapBegin, tokens[j].position - gapBegin);
+      tokens[j].lineBreakBefore = gap.find_first_of("\r\n") != std::string::npos;
+    }
+  }
   return tokens;
 }
 

@@ -2,6 +2,6 @@
 
 namespace qwq {
 
-inline constexpr const char* kVersion = "0.1.2";
+inline constexpr const char* kVersion = "1.1.0";
 
 }  // namespace qwq

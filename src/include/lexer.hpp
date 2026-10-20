@@ -9,13 +9,10 @@ namespace qwq {
 
 /// A lexical token.
 ///
-/// Two spellings of `_` are distinguished by surrounding whitespace:
-///
-///   q_q     Join    concatenation inside a word
-///   q _ q   Append  a stream connector between two faces
-///
-/// This keeps `q _ o0q` (a face on the right) unambiguous while allowing
-/// `q_q` to mean a single two-slot word.
+/// `_` is one connector: in a port it combines types into a binary Pack; in
+/// an expression it sequentially appends morphisms. Whitespace does not change
+/// its meaning. Commas separate list items. `#` is overloaded by type: it reads
+/// an external value or regroups the structure of a Pack.
 struct Token {
   enum class Kind {
     // eye characters (ports)
@@ -33,22 +30,23 @@ struct Token {
     RightParen,
     LeftBracket,
     RightBracket,
-    LeftBrace,   // { -- array literal
+    LeftBrace,   // { -- array literal or sized-array constructor
     RightBrace,  // }
-    Join,    // `_` without surrounding blanks
-    Append,  // `_` with a blank on either side
+    Comma,       // , (list separator)
 
     // connectors
-    Compose,  // ~
-    Tee,      // ;
-    Coerce,   // :
-    Loop,     // @
-    Branch,   // ?
+    Underscore,  // _ (Pack in ports, sequential append in expressions)
+    Compose,     // ~
+    Tee,         // ;
+    Coerce,      // :
+    Loop,        // @
+    Branch,      // ?
 
     // definitions
-    Identifier,  // a function name
+    Identifier,  // a function or type name
     Arrow,       // -> inside a signature
     FatArrow,    // => binds a name to a body
+    Equals,      // = introduces a nominal class type
 
     Operator,  // + - * / % | & ^ ! == != > < >= <= $ .
 
@@ -61,6 +59,7 @@ struct Token {
   std::string spelling;  ///< exact source text: a string literal keeps its quotes
   std::int64_t integer = 0;  ///< value of an integer literal
   std::size_t position = 0;  ///< byte offset in the source
+  bool lineBreakBefore = false;  ///< a newline occurred since the previous token
 };
 
 /// True for tokens that may start a port (`o`, `q`, `s`, `a`).

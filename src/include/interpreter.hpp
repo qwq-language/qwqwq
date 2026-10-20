@@ -12,18 +12,18 @@
 
 namespace qwq {
 
-/// Evaluates a checked program as a queue machine.
+/// Evaluates a checked program over streams.
 ///
-/// Every node consumes exactly `|expr.in|` values and produces exactly
-/// `|expr.out|` values, so the whole program is a left-to-right rewrite of
-/// one ordered stream.  There is no environment and no mutable state; named
-/// morphisms are expanded by substitution, guarded by a depth limit.
+/// Every node consumes and produces one stream. A stream is either empty or
+/// contains one value; a pack is itself one value and holds exactly two
+/// components. Named morphisms are expanded by substitution.
 class Interpreter {
  public:
   Interpreter(std::ostream& output, std::istream& input,
               std::int64_t stepLimit,
               const std::vector<Definition>& definitions,
-              std::ostream* inputPrompt = nullptr);
+              std::ostream* inputPrompt = nullptr,
+              const std::vector<Definition>* specializations = nullptr);
 
   /// Number of external input reads performed during the last run.
   std::size_t inputReadCount() const noexcept { return inputReadCount_; }
@@ -35,9 +35,10 @@ class Interpreter {
  private:
   /// One overload: the checked signature plus the body to expand.
   struct Function {
-    Word in;
-    Word out;
+    StreamType in;
+    StreamType out;
     const Expr* body;
+    std::string templateInstanceKey;
   };
 
   std::ostream& output_;

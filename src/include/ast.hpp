@@ -34,10 +34,14 @@ enum class Core {
   LessEqual,    // <=
   Duplicate,    // $
   Swap,         // .
+  Hash,         // #            parser marker for Read or Pack reshaping
+  Reshape,      // #            regroup Pack structure without reordering leaves
   Index,        // []           [T]_q -> T         read one element
   ArrayWrite,   // []           [T]_q_T -> [T]     write one element
   ArrayLength,  // []           [T] -> q           number of elements
-  ArrayLiteral, // {o -> T}     o -> [T]           each element is a literal face
+  ArrayLiteral, // { ... }      o -> [T]           each element is a literal face
+  ArrayFill,    // {}           q_T -> [T]         fill with the input value
+  ArrayDefault, // {}           q -> [T]           fill with default values
   Read          // #            o -> T             one value from the input source
 };
 
@@ -48,23 +52,27 @@ using ExprPtr = std::unique_ptr<Expr>;
 
 struct Port;
 
-/// One segment of a port.
+/// One part of a port expression.
 struct PortPart {
   enum class Kind {
-    Word,       ///< plain atomic types, e.g. `q` or `o`
-    Array,      ///< `[T]`, a single array-valued slot
-    Expression  ///< a parenthesised identity such as `(q_q)`
+    Primitive,  ///< a primitive type, e.g. `q` or the unit `o`
+    Array,      ///< `[T]`, a single array-valued value
+    Group,      ///< `(T)`, a grouped type that remains one Pack value
+    Named,      ///< a nominal class type or template application
+    Expression  ///< a parenthesised identity used as a grouped type
   };
 
-  Kind kind = Kind::Word;
-  Word word;                    ///< Kind::Word
-  std::unique_ptr<Port> inner;  ///< Kind::Array: element port
-  ExprPtr expression;           ///< Kind::Expression
+  Kind kind = Kind::Primitive;
+  StreamType type;               ///< Kind::Primitive
+  std::unique_ptr<Port> inner;   ///< Kind::Array or Kind::Group
+  std::string name;              ///< Kind::Named
+  std::vector<std::unique_ptr<Port>> arguments;  ///< Kind::Named
+  ExprPtr expression;            ///< Kind::Expression
   std::size_t position = 0;
 };
 
-/// A port is a word built from atomic types, arrays and parenthesised
-/// expressions used as types.
+/// A port denotes one stream type. Underscores combine parts into nested,
+/// left-associative binary Packs; parentheses control grouping.
 struct Port {
   std::vector<PortPart> parts;
 };
@@ -74,71 +82,83 @@ struct Port {
 struct Expr {
   enum class Kind {
     Wire,     ///< a bare port used as the identity morphism
-    Face,     ///< `domain core codomain`
-    Call,     ///< a named morphism introduced by `def`
-    Compose,  ///< ~
+    Face,     ///< optional `domain core codomain` with bidirectional inference
+    Call,     ///< a named morphism with optional input/output annotations
+    Compose,  ///< explicit `~` or implicit composition by juxtaposition
     Tee,      ///< ;
-    Coerce,   ///< :
-    Append,   ///< _
+    Coerce,   ///< : (explicit representation conversion or stream discard)
+    Append,   ///< _ (sequential stream append; same token as port Pack)
     Loop,     ///< @
     Branch    ///< ?
   };
 
   Kind kind = Kind::Wire;
 
-  Port domain;    ///< face domain, or the word of a Wire
-  Port codomain;  ///< face codomain
+  Port domain;    ///< face/call domain, or the stream type of a Wire
+  Port codomain;  ///< face/call codomain
+  bool hasDomain = false;    ///< whether a face/call writes its input type
+  bool hasCodomain = false;  ///< whether a face/call writes its output type
 
   Core core = Core::Add;
+  std::size_t corePosition = 0;  ///< source position of the face's core token
   std::int64_t integer = 0;
-  std::vector<ExprPtr> elements;  ///< ArrayLiteral: one closed literal face per element
+  std::vector<ExprPtr> elements;  ///< ArrayLiteral: one closed literal expression per element
   std::string text;                    ///< string literal, or the name of a Call
+  std::vector<Port> templateArguments;  ///< explicit function-template arguments
+  std::string templateInstanceKey;     ///< selected monomorphized template body
 
   ExprPtr left;
   ExprPtr right;
 
-  Word in;   ///< filled in by the checker
-  Word out;  ///< filled in by the checker
-
-  /// Item boundaries of the two eyes, filled in by the checker.  Types ignore
-  /// the grouping, but `.` is defined by it, so a pack must print as a pack.
-  std::vector<std::size_t> domainItems;
-  std::vector<std::size_t> codomainItems;
-
-  /// Item granularity of a swap: the widths of the pack's two items.
-  std::vector<std::size_t> items;
+  StreamType in;   ///< filled in by the checker
+  StreamType out;  ///< filled in by the checker
+  bool implicitComposition = false;  ///< adjacent stages without a written `~`
+  bool parenthesized = false;        ///< the expression was explicitly grouped
 
   std::size_t position = 0;
 };
 
-/// A named morphism:
-///
-///   def double : q -> q := (q $ q_q) ~ ((q_q) + q)
-///
-/// The declared signature is part of the definition, which lets the body
-/// refer to the name being defined, i.e. recursion.  Several definitions may
-/// share a name as long as their domains differ; a call is resolved by the
-/// type of the stream it receives, exactly like `-` chooses between negation
-/// and subtraction.
+/// A nominal class type. Its body describes the runtime representation;
+/// template parameters stand for complete stream types. Runtime values use the
+/// representation directly, while overload resolution retains the class name.
+struct TypeAliasDefinition {
+  std::string name;
+  std::vector<std::string> parameters;
+  Port body;
+  std::size_t position = 0;
+  std::size_t end = 0;
+};
+
+/// A named morphism. The declared signature is part of the definition, which
+/// lets the body refer to the name being defined, i.e. recursion. Several
+/// definitions may share a name as long as their (input, output) signatures
+/// differ; a call is resolved from either side when possible.
 struct Definition {
   std::string name;
+  std::vector<std::string> templateParameters;
   Port domain;
   Port codomain;
   bool hasSignature = false;  ///< `name : A -> B => body` vs `name => body`
   ExprPtr body;
-  Word in;   ///< resolved signature, filled in by the checker
-  Word out;  ///< resolved signature, filled in by the checker
-  std::vector<std::size_t> domainItems;    ///< item boundaries, for printing
-  std::vector<std::size_t> codomainItems;  ///< item boundaries, for printing
+  StreamType in;   ///< resolved signature, filled in by the checker
+  StreamType out;  ///< resolved signature, filled in by the checker
+  std::string templateInstanceKey;  ///< key for a checked template specialization
   std::size_t position = 0;                ///< byte offset of the name
   std::size_t end = 0;                     ///< byte offset just past the body
 };
 
-/// A source file: definitions followed by an optional main expression.
+/// A source file: nominal class type declarations, function definitions, and
+/// an optional main expression.
 struct Program {
+  std::vector<TypeAliasDefinition> typeAliases;
   std::vector<Definition> definitions;
+  std::vector<Definition> specializations;
   ExprPtr main;
 };
+
+/// Renders the syntax of a structural port type, including unresolved template
+/// parameters. Used by REPL definition listings and program dumps.
+std::string portSource(const Port& port);
 
 /// Renders a tree together with its inferred types, for `--dump`.
 void dump(const Expr& expr, std::ostream& out, int indent = 0);
