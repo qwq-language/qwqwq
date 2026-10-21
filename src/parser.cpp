@@ -207,11 +207,12 @@ class Parser {
 
   // ---- function definitions --------------------------------------------
 
-  /// A statement is a definition when it is `name =>` or has a signature
-  /// ending in `->`. Operator names use the spelling `operator(<)`.
+  /// A statement is a definition when it is `name =>` or has a parenthesized
+  /// signature: `name(A -> B) => body`. Operator names use `operator(<)`.
   bool startsDefinition() {
     if (current().kind != Token::Kind::Identifier) return false;
-    if (!startsOperatorFunctionName() && peek().kind != Token::Kind::Coerce &&
+    if (!startsOperatorFunctionName() &&
+        peek().kind != Token::Kind::LeftParen &&
         peek().kind != Token::Kind::FatArrow &&
         !(peek().kind == Token::Kind::Operator && peek().text == "<")) {
       return false;
@@ -225,10 +226,13 @@ class Parser {
       parseTemplateParameters(parameters);
       if (current().kind == Token::Kind::FatArrow) {
         result = true;
-      } else if (current().kind == Token::Kind::Coerce) {
+      } else if (current().kind == Token::Kind::LeftParen) {
         advance();
         parsePort();
-        result = current().kind == Token::Kind::Arrow;
+        expect(Token::Kind::Arrow, "'->' in the function signature");
+        parsePort();
+        expect(Token::Kind::RightParen, "')' after the function signature");
+        result = current().kind == Token::Kind::FatArrow;
       }
     } catch (const Error&) {
       result = false;
@@ -243,11 +247,12 @@ class Parser {
     definition.name = parseFunctionName();
     parseTemplateParameters(definition.templateParameters);
 
-    if (current().kind == Token::Kind::Coerce) {
+    if (current().kind == Token::Kind::LeftParen) {
       advance();
       definition.domain = parsePort();
-      expect(Token::Kind::Arrow, "'->' in the signature");
+      expect(Token::Kind::Arrow, "'->' in the function signature");
       definition.codomain = parsePort();
+      expect(Token::Kind::RightParen, "')' after the function signature");
       definition.hasSignature = true;
     }
 

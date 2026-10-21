@@ -229,8 +229,8 @@ class Session {
       }
       output_ << ">";
     }
-    output_ << " : " << toString(definition.in) << " -> "
-            << toString(definition.out) << "\n";
+    output_ << "(" << toString(definition.in) << " -> "
+            << toString(definition.out) << ")\n";
   }
 };
 

@@ -13,7 +13,7 @@ namespace qwq {
 ///   Program     ::= (ClassType | Definition)* Expr?
 ///   ClassType   ::= Identifier ["<" Identifier ("," Identifier)* ">"] "=" Port
 ///   Definition  ::= FunctionName ["<" Identifier ("," Identifier)* ">"]
-///                   [":" Port "->" Port] "=>" Expr
+///                   ["(" Port "->" Port ")"] "=>" Expr
 ///   FunctionName ::= Identifier | "operator(" Operator ")" | "operator([])"
 ///
 /// Precedence, from loosest to tightest binding:

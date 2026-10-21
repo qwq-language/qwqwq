@@ -1330,8 +1330,8 @@ std::string describeOverloads(const std::string& name, const Overloads& overload
       }
       text += ">";
     }
-    text += " : " + toString(overload.signature.first) + " -> " +
-            toString(overload.signature.second) + ";";
+    text += "(" + toString(overload.signature.first) + " -> " +
+            toString(overload.signature.second) + ");";
   }
   if (!overloads.empty()) text.pop_back();
   return text;
@@ -1356,7 +1356,7 @@ void checkCall(Expr& expr, Environment& environment,
       throw Error("'" + expr.text +
                       "' cannot be called in its own body: without a signature its "
                       "type is not known yet; write `" + expr.text +
-                      " : A -> B => body`",
+                      "(A -> B) => body`",
                   expr.position);
     }
 

@@ -1,132 +1,131 @@
 // an example program by AI
+halve(q -> q) => (q_2) ~ ((q_q) / q)
 
-halve : q -> q => (q_2) ~ ((q_q) / q)
+makeTails(q -> [q]) => (q_9223372036854775807) ~ ((q_q){}[q])
 
-makeTails : q -> [q] => (q_9223372036854775807) ~ ((q_q){}[q])
+dec(q -> q) => (q_1) ~ ((q_q) - q)
 
-dec : q -> q => (q_1) ~ ((q_q) - q)
+getRunTable([q]_q -> [q]) => ([q])_(q : o)
 
-getRunTable : [q]_q -> [q] => ([q])_(q : o)
+getRunCount([q]_q -> q) => ([q] : o)_q
 
-getRunCount : [q]_q -> q => ([q] : o)_q
+hasRun([q]_q -> a) =>
+	getRunCount ~
+	(q_0) ~
+	((q_q) > a)
 
-hasRun : [q]_q -> a =>
-        getRunCount ~
-        (q_0) ~
-        ((q_q) > a)
+readCondition([q]_q -> a_([q]_q)) => ($) ~ (hasRun_([q]_q))
 
-readCondition : [q]_q -> a_([q]_q) => ($) ~ (hasRun_([q]_q))
+getLeft([q]_q_(q_q) -> [q]_q) => ([q]_q)_((q_q) : o)
 
-getLeft : [q]_q_(q_q) -> [q]_q => ([q]_q)_((q_q) : o)
+getRight([q]_q_(q_q) -> q_q) => (([q]_q) : o)_(q_q)
 
-getRight : [q]_q_(q_q) -> q_q => (([q]_q) : o)_(q_q)
+getTails([q]_q_(q_q) -> [q]) => getLeft ~ (([q])_(q : o))
 
-getTails : [q]_q_(q_q) -> [q] => getLeft ~ (([q])_(q : o))
+getX([q]_q_(q_q) -> q) => getLeft ~ (([q] : o)_q)
 
-getX : [q]_q_(q_q) -> q => getLeft ~ (([q] : o)_q)
+getLow([q]_q_(q_q) -> q) => getRight ~ (q_(q : o))
 
-getLow : [q]_q_(q_q) -> q => getRight ~ (q_(q : o))
+getHigh([q]_q_(q_q) -> q) => getRight ~ ((q : o)_q)
 
-getHigh : [q]_q_(q_q) -> q => getRight ~ ((q : o)_q)
+mid([q]_q_(q_q) -> q) =>
+	($) ~
+	(getLow_getHigh) ~
+	((q_q) + q) ~
+	halve
 
-mid : [q]_q_(q_q) -> q =>
-        ($) ~
-        (getLow_getHigh) ~
-        ((q_q) + q) ~
-        halve
+probeInput([q]_q_(q_q) -> [q]_q) => ($) ~ (getTails_mid)
 
-probeInput : [q]_q_(q_q) -> [q]_q => ($) ~ (getTails_mid)
+readAndX([q]_q_q -> q_q) => []_q
 
-readAndX : [q]_q_q -> q_q => []_q
+isBelow([q]_q_(q_q) -> a) =>
+	($) ~
+	(probeInput_getX) ~
+	readAndX ~
+	((q_q) < a)
 
-isBelow : [q]_q_(q_q) -> a =>
-        ($) ~
-        (probeInput_getX) ~
-        readAndX ~
-        ((q_q) < a)
+notBelow([q]_q_(q_q) -> a) => isBelow ~ !
 
-notBelow : [q]_q_(q_q) -> a => isBelow ~ !
+inRange([q]_q_(q_q) -> a) =>
+	($) ~
+	(getLow_getHigh) ~
+	((q_q) < a)
 
-inRange : [q]_q_(q_q) -> a =>
-        ($) ~
-        (getLow_getHigh) ~
-        ((q_q) < a)
+belowCondition([q]_q_(q_q) -> a_([q]_q_(q_q))) => ($) ~ (isBelow_([q]_q_(q_q)))
 
-belowCondition : [q]_q_(q_q) -> a_([q]_q_(q_q)) => ($) ~ (isBelow_([q]_q_(q_q)))
+notBelowCondition([q]_q_(q_q) -> a_([q]_q_(q_q))) => ($) ~ (notBelow_([q]_q_(q_q)))
 
-notBelowCondition : [q]_q_(q_q) -> a_([q]_q_(q_q)) => ($) ~ (notBelow_([q]_q_(q_q)))
+rangeCondition([q]_q_(q_q) -> a_([q]_q_(q_q))) => ($) ~ (inRange_([q]_q_(q_q)))
 
-rangeCondition : [q]_q_(q_q) -> a_([q]_q_(q_q)) => ($) ~ (inRange_([q]_q_(q_q)))
+midPlusOne([q]_q_(q_q) -> q) =>
+	mid ~
+	(q_1) ~
+	((q_q) + q)
 
-midPlusOne : [q]_q_(q_q) -> q =>
-        mid ~
-        (q_1) ~
-        ((q_q) + q)
+boundsAfterLow([q]_q_(q_q) -> q_q) => ($) ~ (midPlusOne_getHigh)
 
-boundsAfterLow : [q]_q_(q_q) -> q_q => ($) ~ (midPlusOne_getHigh)
+boundsAfterHigh([q]_q_(q_q) -> q_q) => ($) ~ (getLow_mid)
 
-boundsAfterHigh : [q]_q_(q_q) -> q_q => ($) ~ (getLow_mid)
+setLow([q]_q_(q_q) -> [q]_q_(q_q)) => ($) ~ (getLeft_boundsAfterLow)
 
-setLow : [q]_q_(q_q) -> [q]_q_(q_q) => ($) ~ (getLeft_boundsAfterLow)
+setHigh([q]_q_(q_q) -> [q]_q_(q_q)) => ($) ~ (getLeft_boundsAfterHigh)
 
-setHigh : [q]_q_(q_q) -> [q]_q_(q_q) => ($) ~ (getLeft_boundsAfterHigh)
+searchStep([q]_q_(q_q) -> [q]_q_(q_q)) =>
+	(belowCondition ? setLow) ~
+	(
+		rangeCondition ?
+		(notBelowCondition ? setHigh)
+	)
 
-searchStep : [q]_q_(q_q) -> [q]_q_(q_q) =>
-        (belowCondition ? setLow) ~
-        (
-                rangeCondition ?
-                (notBelowCondition ? setHigh)
-        )
+search([q]_q_(q_q) -> [q]_q_(q_q)) => rangeCondition @ searchStep
 
-search : [q]_q_(q_q) -> [q]_q_(q_q) => rangeCondition @ searchStep
+tailsLength([q]_q -> q) => (([q])_(q : o)) ~ []
 
-tailsLength : [q]_q -> q => (([q])_(q : o)) ~ []
+initialBounds([q]_q -> q_q) => (o_0)_tailsLength
 
-initialBounds : [q]_q -> q_q => (o_0)_tailsLength
+initialSearch([q]_q -> [q]_q_(q_q)) => ($) ~ (([q]_q)_initialBounds)
 
-initialSearch : [q]_q -> [q]_q_(q_q) => ($) ~ (([q]_q)_initialBounds)
+searchResult([q]_q_(q_q) -> [q]_q_q) => ($) ~ (getLeft_getLow)
 
-searchResult : [q]_q_(q_q) -> [q]_q_q => ($) ~ (getLeft_getLow)
+lowerBound([q]_q -> [q]_q_q) =>
+	initialSearch ~
+	search ~
+	searchResult
 
-lowerBound : [q]_q -> [q]_q_q =>
-        initialSearch ~
-        search ~
-        searchResult
+foundArray([q]_q_q -> [q]) => (([q]_q)_(q : o)) ~ (([q])_(q : o))
 
-foundArray : [q]_q_q -> [q] => (([q]_q)_(q : o)) ~ (([q])_(q : o))
+foundPosition([q]_q_q -> q) => (([q]_q) : o)_q
 
-foundPosition : [q]_q_q -> q => (([q]_q) : o)_q
+foundValue([q]_q_q -> q) => (([q]_q)_(q : o)) ~ (([q] : o)_q)
 
-foundValue : [q]_q_q -> q => (([q]_q)_(q : o)) ~ (([q] : o)_q)
+writeTriple([q]_q_q -> [q]_q_q) =>
+	($) ~
+	($_([q]_q_q)) ~
+	(foundArray_foundPosition_foundValue)
 
-writeTriple : [q]_q_q -> [q]_q_q =>
-        ($) ~
-        ($_([q]_q_q)) ~
-        (foundArray_foundPosition_foundValue)
+update([q]_q_q -> [q]) => writeTriple ~ []
 
-update : [q]_q_q -> [q] => writeTriple ~ []
+newTails([q] -> [q]) =>
+	(([q])_(#q)) ~
+	lowerBound ~
+	update
 
-newTails : [q] -> [q] =>
-        (([q])_(#q)) ~
-        lowerBound ~
-        update
+process([q]_q -> [q]_q) => newTails_dec
 
-process : [q]_q -> [q]_q => newTails_dec
+run([q]_q -> [q]_q) => readCondition @ process
 
-run : [q]_q -> [q]_q => readCondition @ process
+initialState(q -> [q]_q) => ($) ~ (makeTails_q)
 
-initialState : q -> [q]_q => ($) ~ (makeTails_q)
+answer([q]_q -> q) =>
+	getRunTable ~
+	(([q])_9223372036854775807) ~
+	lowerBound ~
+	foundPosition
 
-answer : [q]_q -> q =>
-        getRunTable ~
-        (([q])_9223372036854775807) ~
-        lowerBound ~
-        foundPosition
-
-main : o -> q =>
-        #q ~
-        initialState ~
-        run ~
-        answer
+main(o -> q) =>
+	#q ~
+	initialState ~
+	run ~
+	answer
 
 main

@@ -138,7 +138,7 @@ struct Definition {
   std::vector<std::string> templateParameters;
   Port domain;
   Port codomain;
-  bool hasSignature = false;  ///< `name : A -> B => body` vs `name => body`
+  bool hasSignature = false;  ///< `name(A -> B) => body` vs `name => body`
   ExprPtr body;
   StreamType in;   ///< resolved signature, filled in by the checker
   StreamType out;  ///< resolved signature, filled in by the checker

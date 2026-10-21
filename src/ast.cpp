@@ -178,8 +178,8 @@ void dump(const Program& program, std::ostream& out) {
     }
 
     const Definition& definition = program.definitions[definitionIndex++];
-    out << functionNameSource(definition) << " : " << toString(definition.in) << " -> "
-        << toString(definition.out) << "\n";
+    out << functionNameSource(definition) << "(" << toString(definition.in) << " -> "
+        << toString(definition.out) << ")\n";
     if (definition.body) {
       if (definition.templateParameters.empty()) {
         dump(*definition.body, out, 1);

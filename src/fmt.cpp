@@ -552,7 +552,47 @@ std::string format(const std::string& source) {
       hashReshapes[static_cast<std::size_t>(token - tokens.begin())] = true;
     }
   }
-  const std::vector<bool> glue = computeGlue(tokens, hashReshapes);
+  std::vector<bool> glue = computeGlue(tokens, hashReshapes);
+  for (const Definition& definition : program.definitions) {
+    if (!definition.hasSignature) continue;
+    const auto name = std::lower_bound(
+        tokens.begin(), tokens.end(), definition.position,
+        [](const Token& token, std::size_t position) {
+          return token.position < position;
+        });
+    if (name == tokens.end() || name->position != definition.position) continue;
+
+    const std::size_t nameIndex = static_cast<std::size_t>(name - tokens.begin());
+    std::size_t signatureIndex = nameIndex + 1;
+    if (name->text == "operator" && signatureIndex + 2 < tokens.size() &&
+        tokens[signatureIndex].kind == Token::Kind::LeftParen) {
+      if (tokens[signatureIndex + 1].kind == Token::Kind::Operator &&
+          tokens[signatureIndex + 2].kind == Token::Kind::RightParen) {
+        signatureIndex += 3;
+      } else if (signatureIndex + 3 < tokens.size() &&
+                 tokens[signatureIndex + 1].kind == Token::Kind::LeftBracket &&
+                 tokens[signatureIndex + 2].kind == Token::Kind::RightBracket &&
+                 tokens[signatureIndex + 3].kind == Token::Kind::RightParen) {
+        signatureIndex += 4;
+      }
+    }
+    if (signatureIndex < tokens.size() &&
+        tokens[signatureIndex].kind == Token::Kind::Operator &&
+        tokens[signatureIndex].text == "<") {
+      ++signatureIndex;
+      while (signatureIndex < tokens.size() &&
+             !(tokens[signatureIndex].kind == Token::Kind::Operator &&
+               tokens[signatureIndex].text == ">")) {
+        ++signatureIndex;
+      }
+      if (signatureIndex == tokens.size()) continue;
+      ++signatureIndex;
+    }
+    if (signatureIndex < tokens.size() &&
+        tokens[signatureIndex].kind == Token::Kind::LeftParen) {
+      glue[signatureIndex] = true;
+    }
+  }
   const std::vector<std::size_t> lineStarts = lineStartTable(source);
 
   // A unit is one class declaration, function definition, or the main expression;
