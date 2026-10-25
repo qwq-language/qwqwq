@@ -1,11 +1,14 @@
 #include "diagnostic.hpp"
 
+#include "color.hpp"
+
 #include <ostream>
 
 namespace qwq {
 
 void reportError(std::ostream& errors, const std::string& source, const Error& error) {
-  errors << "error: " << error.what() << "\n";
+  errors << color::bold(true) << color::red(true) << "error:" << color::reset(true) << ' '
+         << error.what() << "\n";
 
   const std::size_t position = error.position();
   if (position == Error::npos || position > source.size()) return;
@@ -23,10 +26,11 @@ void reportError(std::ostream& errors, const std::string& source, const Error& e
 
   const std::string number = std::to_string(lineNumber);
 
-  errors << " " << number << " | " << source.substr(lineBegin, lineEnd - lineBegin)
-         << "\n";
-  errors << " " << std::string(number.size(), ' ') << " | "
-         << std::string(position - lineBegin, ' ') << "^\n";
+  errors << color::dim(true) << ' ' << number << " | " << color::reset(true)
+         << source.substr(lineBegin, lineEnd - lineBegin) << "\n";
+  errors << color::dim(true) << ' ' << std::string(number.size(), ' ') << " | " << color::reset(true)
+         << std::string(position - lineBegin, ' ') << color::bold(true) << color::red(true) << '^'
+         << color::reset(true) << "\n";
 }
 
 }  // namespace qwq

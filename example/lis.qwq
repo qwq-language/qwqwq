@@ -1,4 +1,7 @@
 // an example program by AI
+
+=> io.awa
+
 halve(q -> q) => (q_2) ~ ((q_q) / q)
 
 makeTails(q -> [q]) => (q_9223372036854775807) ~ ((q_q){}[q])
@@ -106,7 +109,7 @@ writeTriple([q]_q_q -> [q]_q_q) =>
 update([q]_q_q -> [q]) => writeTriple ~ []
 
 newTails([q] -> [q]) =>
-	(([q])_(#q)) ~
+	(([q])_(read)) ~
 	lowerBound ~
 	update
 
@@ -123,9 +126,9 @@ answer([q]_q -> q) =>
 	foundPosition
 
 main(o -> q) =>
-	#q ~
+	read ~
 	initialState ~
 	run ~
 	answer
 
-main
+main ~ print ~ ("\n") ~ print

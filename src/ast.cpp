@@ -114,7 +114,6 @@ const char* name(Core core) {
     case Core::ArrayLiteral: return "array-literal";
     case Core::ArrayFill: return "array-fill";
     case Core::ArrayDefault: return "array-default";
-    case Core::Read: return "read";
   }
   return "?";
 }
@@ -147,7 +146,6 @@ void dump(const Expr& expr, std::ostream& out, int indent) {
       }
       break;
     case Expr::Kind::Compose: out << "~"; break;
-    case Expr::Kind::Tee: out << ";"; break;
     case Expr::Kind::Coerce: out << ":"; break;
     case Expr::Kind::Append: out << "_"; break;
     case Expr::Kind::Loop: out << "@"; break;

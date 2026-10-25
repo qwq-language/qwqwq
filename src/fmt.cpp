@@ -34,13 +34,12 @@ bool isPort(const Token& token) {
   }
 }
 
-/// `~ ; @ ?` -- the connectors that hold a chain of stages together.
+/// `~ @ ?` -- the connectors that hold a chain of stages together.
 /// `:` and `_` are not composition stages; `_` is handled separately as a
 /// Pack/append separator by the layout code below.
 bool isLayoutTrigger(const Token& token) {
   switch (token.kind) {
     case Token::Kind::Compose:
-    case Token::Kind::Tee:
     case Token::Kind::Loop:
     case Token::Kind::Branch: return true;
     default: return false;
@@ -192,19 +191,6 @@ std::vector<bool> computeGlue(const std::vector<Token>& tokens,
       continue;
     }
     if (cur.kind == Token::Kind::Comma) {
-      glue[i] = true;
-      continue;
-    }
-    // Read-style `#` touches adjacent port annotations; reshape-style `#` is
-    // spaced like an operator.
-    if (((cur.kind == Token::Kind::Operator && cur.text == "#" &&
-          !hashReshapes[i]) &&
-         (isPort(prev) || prev.kind == Token::Kind::RightBracket ||
-          prev.kind == Token::Kind::RightParen)) ||
-        ((prev.kind == Token::Kind::Operator && prev.text == "#" &&
-          !hashReshapes[i - 1]) &&
-         (isPort(cur) || cur.kind == Token::Kind::LeftBracket ||
-          cur.kind == Token::Kind::LeftParen))) {
       glue[i] = true;
       continue;
     }
@@ -519,11 +505,11 @@ struct Range {
 
 }  // namespace
 
-std::string format(const std::string& source) {
+std::string format(const std::string& source, bool allowDeclarations) {
   std::vector<Token> tokens = tokenize(source, /*keepComments=*/true);
   if (tokens.empty()) return {};
 
-  const Program program = parse(tokens);  // also validates the syntax
+  const Program program = parse(tokens, allowDeclarations);  // also validates
   // The end-of-input marker carries no text; layout works on the real tokens.
   tokens.erase(std::remove_if(tokens.begin(), tokens.end(),
                               [](const Token& token) { return token.kind == Token::Kind::End; }),
@@ -595,6 +581,27 @@ std::string format(const std::string& source) {
   }
   const std::vector<std::size_t> lineStarts = lineStartTable(source);
 
+  // `=> header.awa` keeps its own line and its own spelling: the path is not a
+  // division or a swap, so it must not be laid out as an expression.
+  std::vector<std::pair<std::size_t, std::size_t>> includeRanges;  // [begin, end)
+  const auto endsWithAwa = [&](std::size_t begin, std::size_t end) {
+    std::string path;
+    for (std::size_t i = begin; i < end; ++i) path += tokens[i].spelling;
+    return path.size() > 4 && path.compare(path.size() - 4, 4, ".awa") == 0;
+  };
+  for (std::size_t i = 0; i < tokens.size(); ++i) {
+    if (tokens[i].kind != Token::Kind::FatArrow) continue;
+    if (i != 0 && !tokens[i].lineBreakBefore) continue;
+    std::size_t end = i + 1;
+    while (end < tokens.size() && !tokens[end].lineBreakBefore &&
+           tokens[end].kind != Token::Kind::Comment) {
+      ++end;
+    }
+    if (end == i + 1 || !endsWithAwa(i + 1, end)) continue;
+    includeRanges.emplace_back(i, end);
+    i = end - 1;
+  }
+
   // A unit is one class declaration, function definition, or the main expression;
   // source ranges keep declarations in their written order.
   std::vector<std::pair<std::size_t, std::size_t>> cuts;  // (name index, body end)
@@ -627,6 +634,9 @@ std::string format(const std::string& source) {
   for (const Definition& definition : program.definitions) {
     addCut(definition.position, definition.end);
   }
+  for (const auto& range : includeRanges) {
+    cuts.emplace_back(range.first, range.second);
+  }
   std::sort(cuts.begin(), cuts.end());
 
   std::vector<Range> units;
@@ -640,6 +650,21 @@ std::string format(const std::string& source) {
   std::vector<std::string> out;
   for (const Range& range : units) {
     if (range.begin == range.end) continue;
+
+    const auto include = std::find_if(
+        includeRanges.begin(), includeRanges.end(),
+        [&](const std::pair<std::size_t, std::size_t>& range2) {
+          return range2.first == range.begin && range2.second == range.end;
+        });
+    if (include != includeRanges.end()) {
+      if (!out.empty()) out.push_back(std::string());
+      std::string line = "=> ";
+      for (std::size_t i = range.begin + 1; i < range.end; ++i) {
+        line += tokens[i].spelling;
+      }
+      out.push_back(line);
+      continue;
+    }
 
     if (!out.empty()) out.push_back(std::string());
 

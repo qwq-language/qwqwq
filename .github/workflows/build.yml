@@ -104,6 +104,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
       - name: Download raw executables
         uses: actions/download-artifact@v8
         with:
@@ -114,7 +117,9 @@ jobs:
       - name: Package each executable once
         shell: bash
         run: |
-          mkdir -p release-assets
+          assets="$PWD/release-assets"
+          staging="$PWD/release-staging"
+          mkdir -p "$assets" "$staging"
           shopt -s nullglob
           artifact_dirs=(release-binaries/qwqwq-*)
           if [[ ${#artifact_dirs[@]} -eq 0 ]]; then
@@ -122,18 +127,27 @@ jobs:
             exit 1
           fi
 
+          # The archive holds one folder named qwqwq, with the executable and
+          # the standard headers beside it.
           for artifact_dir in "${artifact_dirs[@]}"; do
             artifact_name="${artifact_dir##*/}"
+            package="$staging/$artifact_name/qwqwq"
+            mkdir -p "$package"
+            cp -R awa "$package/awa"
+
             if [[ -f "$artifact_dir/qwqwq.exe" ]]; then
-              zip -j "release-assets/${artifact_name}.zip" "$artifact_dir/qwqwq.exe"
+              cp "$artifact_dir/qwqwq.exe" "$package/qwqwq.exe"
+              (cd "$staging/$artifact_name" && zip -qr "$assets/${artifact_name}.zip" qwqwq)
             elif [[ -f "$artifact_dir/qwqwq" ]]; then
-              tar -czf "release-assets/${artifact_name}.tar.gz" -C "$artifact_dir" qwqwq
+              cp "$artifact_dir/qwqwq" "$package/qwqwq"
+              chmod +x "$package/qwqwq"
+              tar -czf "$assets/${artifact_name}.tar.gz" -C "$staging/$artifact_name" qwqwq
             else
               echo "Expected qwqwq or qwqwq.exe in $artifact_dir" >&2
               exit 1
             fi
           done
-          ls -lh release-assets
+          ls -lh "$assets"
 
       - name: Attach packages to GitHub Release
         uses: softprops/action-gh-release@v3

@@ -12,13 +12,16 @@ endif()
 add_executable(qwqwq
   src/ast.cpp
   src/checker.cpp
+  src/color.cpp
   src/diagnostic.cpp
   src/fmt.cpp
   src/interpreter.cpp
   src/lexer.cpp
+  src/loader.cpp
   src/main.cpp
   src/parser.cpp
   src/repl.cpp
+  src/stdlib.cpp
   src/type.cpp
   src/value.cpp
 )

@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "ast.hpp"
+#include "stdlib.hpp"
 #include "value.hpp"
 
 namespace qwq {
@@ -23,9 +24,11 @@ class Interpreter {
               std::int64_t stepLimit,
               const std::vector<Definition>& definitions,
               std::ostream* inputPrompt = nullptr,
-              const std::vector<Definition>* specializations = nullptr);
+              const std::vector<Definition>* specializations = nullptr,
+              std::ostream* errors = nullptr);
 
-  /// Number of external input reads performed during the last run.
+  /// Number of standard-input reads performed during the last run. The REPL
+  /// uses it to tell a data line from the next command.
   std::size_t inputReadCount() const noexcept { return inputReadCount_; }
 
   /// Runs `expr` on `input`.  Throws Error on runtime faults (division by
@@ -33,16 +36,22 @@ class Interpreter {
   Stream run(const Expr& expr, Stream input);
 
  private:
-  /// One overload: the checked signature plus the body to expand.
+  /// One overload: the checked signature plus the body to expand, or the
+  /// native implementation a header declared.
   struct Function {
     StreamType in;
     StreamType out;
     const Expr* body;
     std::string templateInstanceKey;
+    bool external = false;
   };
+
+  /// Bridges the native library to the interpreter's streams.
+  class RuntimeIo;
 
   std::ostream& output_;
   std::istream& input_;
+  std::ostream* errors_ = nullptr;
   std::ostream* inputPrompt_;
   std::int64_t stepLimit_;
   std::int64_t steps_ = 0;
@@ -52,9 +61,7 @@ class Interpreter {
   Stream evaluate(const Expr& expr, Stream input);
   Stream evaluateFace(const Expr& expr, const Stream& input);
   Stream evaluateCall(const Expr& expr, Stream input);
-  /// Reads one whitespace-delimited token from the input source and turns it
-  /// into the value `#` promised.
-  Value readInput(const Expr& expr);
+  Stream callNative(NativeFunction function, const Expr& expr, Stream input);
 
   void tick(const Expr& expr);
   static Value applyBinary(Core core, const Value& left, const Value& right,

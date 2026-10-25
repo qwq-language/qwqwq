@@ -34,15 +34,14 @@ enum class Core {
   LessEqual,    // <=
   Duplicate,    // $
   Swap,         // .
-  Hash,         // #            parser marker for Read or Pack reshaping
+  Hash,         // #            parser marker for Pack reshaping
   Reshape,      // #            regroup Pack structure without reordering leaves
   Index,        // []           [T]_q -> T         read one element
   ArrayWrite,   // []           [T]_q_T -> [T]     write one element
   ArrayLength,  // []           [T] -> q           number of elements
   ArrayLiteral, // { ... }      o -> [T]           each element is a literal face
   ArrayFill,    // {}           q_T -> [T]         fill with the input value
-  ArrayDefault, // {}           q -> [T]           fill with default values
-  Read          // #            o -> T             one value from the input source
+  ArrayDefault  // {}           q -> [T]           fill with default values
 };
 
 const char* name(Core core);
@@ -85,7 +84,6 @@ struct Expr {
     Face,     ///< optional `domain core codomain` with bidirectional inference
     Call,     ///< a named morphism with optional input/output annotations
     Compose,  ///< explicit `~` or implicit composition by juxtaposition
-    Tee,      ///< ;
     Coerce,   ///< : (explicit representation conversion or stream discard)
     Append,   ///< _ (sequential stream append; same token as port Pack)
     Loop,     ///< @
@@ -132,13 +130,16 @@ struct TypeAliasDefinition {
 /// A named morphism. The declared signature is part of the definition, which
 /// lets the body refer to the name being defined, i.e. recursion. Several
 /// definitions may share a name as long as their (input, output) signatures
-/// differ; a call is resolved from either side when possible.
+/// differ; a call is resolved from either side when possible. A definition
+/// that comes from a header has no body: the runtime implements it.
 struct Definition {
   std::string name;
   std::vector<std::string> templateParameters;
   Port domain;
   Port codomain;
   bool hasSignature = false;  ///< `name(A -> B) => body` vs `name => body`
+  bool external = false;      ///< a header declaration: the body is native
+  bool fromEntry = true;      ///< false when a header supplied the definition
   ExprPtr body;
   StreamType in;   ///< resolved signature, filled in by the checker
   StreamType out;  ///< resolved signature, filled in by the checker
@@ -147,12 +148,20 @@ struct Definition {
   std::size_t end = 0;                     ///< byte offset just past the body
 };
 
+/// One `=> path.awa` line: the program is read together with the headers it
+/// names.
+struct Include {
+  std::string path;
+  std::size_t position = 0;
+};
+
 /// A source file: nominal class type declarations, function definitions, and
 /// an optional main expression.
 struct Program {
   std::vector<TypeAliasDefinition> typeAliases;
   std::vector<Definition> definitions;
   std::vector<Definition> specializations;
+  std::vector<Include> includes;
   ExprPtr main;
 };
 

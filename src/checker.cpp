@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "error.hpp"
+#include "stdlib.hpp"
 
 namespace qwq {
 namespace {
@@ -188,35 +189,6 @@ StreamType secondOf(const StreamType& streamType) {
 bool isEqualPair(const StreamType& streamType) {
   return isPack(streamType) &&
          equals(firstOf(streamType), secondOf(streamType));
-}
-
-/// Bare wires and literal-producing stages count as simple stream groups; a
-/// juxtaposition of two such groups needs an explicit `~`.
-bool isLiteralStreamGroup(const Expr& expr) {
-  switch (expr.kind) {
-    case Expr::Kind::Wire:
-      return true;
-    case Expr::Kind::Face:
-      if (expr.core == Core::IntLiteral ||
-          expr.core == Core::StringLiteral ||
-          expr.core == Core::BoolLiteral) {
-        return true;
-      }
-      return expr.core == Core::ArrayLiteral &&
-             (!expr.elements.empty() || isArray(expr.out));
-    case Expr::Kind::Append:
-      return isLiteralStreamGroup(*expr.left) &&
-             isLiteralStreamGroup(*expr.right);
-    default:
-      return false;
-  }
-}
-
-const Expr& lastUnparenthesizedStage(const Expr& expr) {
-  if (!expr.parenthesized && expr.kind == Expr::Kind::Compose) {
-    return lastUnparenthesizedStage(*expr.right);
-  }
-  return expr;
 }
 
 /// `:` permits the identity, an explicit representation conversion, or
@@ -744,7 +716,6 @@ std::optional<StreamType> knownInput(const Expr& expr,
         case Core::IntLiteral:
         case Core::StringLiteral:
         case Core::BoolLiteral:
-        case Core::Read:
           return StreamType{};
         case Core::ArrayLiteral:
           return expr.elements.empty() ? std::nullopt
@@ -780,7 +751,6 @@ std::optional<StreamType> knownInput(const Expr& expr,
     }
 
     case Expr::Kind::Compose:
-    case Expr::Kind::Tee:
     case Expr::Kind::Coerce:
       return knownInput(*expr.left, environment);
 
@@ -848,7 +818,6 @@ std::optional<StreamType> knownOutput(const Expr& expr,
     }
 
     case Expr::Kind::Compose:
-    case Expr::Kind::Tee:
     case Expr::Kind::Coerce:
       return knownOutput(*expr.right, environment);
 
@@ -1045,7 +1014,6 @@ std::string operatorFunctionName(Core core) {
     case Core::Duplicate: return "operator($)";
     case Core::Swap: return "operator(.)";
     case Core::Hash:
-    case Core::Read:
     case Core::Reshape: return "operator(#)";
     case Core::Index:
     case Core::ArrayWrite:
@@ -1171,13 +1139,9 @@ void checkFace(Expr& expr, const std::optional<StreamType>& input,
       checkIndex(expr, input, output, environment);
       return;
 
-    case Core::Hash:
-    case Core::Read: {
+    case Core::Hash: {
+      // `#` only regroups Pack structure. Reading a value is a library call.
       std::vector<CoreCandidate> candidates;
-      const StreamType empty;
-      addCandidate(candidates, Core::Read, empty, StreamType(intType()));
-      addCandidate(candidates, Core::Read, empty, StreamType(strType()));
-      addCandidate(candidates, Core::Read, empty, StreamType(boolType()));
       if (input && output && isPack(*input) && isPack(*output) &&
           sameOrderedPackLeaves(*input, *output)) {
         addCandidate(candidates, Core::Reshape, *input, *output);
@@ -1319,9 +1283,10 @@ void checkFace(Expr& expr, const std::optional<StreamType>& input,
 // ---- calls and overloading ----------------------------------------------
 
 std::string describeOverloads(const std::string& name, const Overloads& overloads) {
-  std::string text = "candidates are:";
+  std::string text;
   for (const FunctionOverload& overload : overloads) {
-    text += " " + name;
+    if (!text.empty()) text += " ";
+    text += name;
     if (!overload.templateParameters.empty()) {
       text += "<";
       for (std::size_t i = 0; i < overload.templateParameters.size(); ++i) {
@@ -1418,14 +1383,14 @@ void checkCall(Expr& expr, Environment& environment,
 
   if (matching.empty()) {
     throw Error("no overload of '" + expr.text +
-                    "' matches the available input/output types; " +
+                    "' matches the available input/output types; candidates are " +
                     describeOverloads(expr.text, found->second),
                 expr.position);
   }
   if (matching.size() != 1) {
     throw Error("ambiguous call to '" + expr.text +
                     "'; provide an input or output type or explicit template "
-                    "arguments to select one of " +
+                    "arguments to choose between " +
                     describeOverloads(expr.text, found->second),
                 expr.position);
   }
@@ -1444,13 +1409,6 @@ void checkCall(Expr& expr, Environment& environment,
 void checkCompose(Expr& expr, Environment& environment,
                   const StreamType* inputHint, const StreamType* outputHint,
                   const char* symbol) {
-  if (expr.implicitComposition &&
-      isLiteralStreamGroup(lastUnparenthesizedStage(*expr.left)) &&
-      isLiteralStreamGroup(*expr.right)) {
-    throw Error("an explicit '~' is required between adjacent wires or literal stream groups",
-                expr.position);
-  }
-
   const auto rightInput = knownInput(*expr.right, environment);
   const auto leftOutput = knownOutput(*expr.left, environment);
 
@@ -1486,12 +1444,6 @@ void checkCompose(Expr& expr, Environment& environment,
   if (outputHint && !canConvert(expr.out, *outputHint)) {
     throw Error("expression output type is " + toString(expr.out) +
                     ", but the surrounding context requires " + toString(*outputHint),
-                expr.position);
-  }
-  if (expr.implicitComposition &&
-      isLiteralStreamGroup(lastUnparenthesizedStage(*expr.left)) &&
-      isLiteralStreamGroup(*expr.right)) {
-    throw Error("an explicit '~' is required between adjacent wires or literal stream groups",
                 expr.position);
   }
 }
@@ -1682,10 +1634,6 @@ void checkExpr(Expr& expr, Environment& environment,
       checkCompose(expr, environment, inputHint, outputHint, "~");
       return;
 
-    case Expr::Kind::Tee:
-      checkCompose(expr, environment, inputHint, outputHint, ";");
-      return;
-
     case Expr::Kind::Coerce:
       checkCoerce(expr, environment, inputHint, outputHint);
       return;
@@ -1765,6 +1713,28 @@ void check(Program& program) {
   };
 
   for (Definition& definition : program.definitions) {
+    if (definition.external) {
+      // A `.awa` declaration: the signature is the whole definition and the
+      // body is provided by the runtime.
+      if (!definition.templateParameters.empty()) {
+        throw Error("a declaration cannot be a template: '" + definition.name +
+                        "'",
+                    definition.position);
+      }
+      definition.in = checkPort(definition.domain, environment);
+      definition.out = checkPort(definition.codomain, environment);
+      if (!hasNative(definition.name, definition.in, definition.out)) {
+        // The declaration usually lives in another file, so its offset would
+        // point into the wrong line here.
+        throw Error("'" + definition.name + "' is declared as " +
+                        toString(definition.in) + " -> " + toString(definition.out) +
+                        ", but the runtime has no implementation for it",
+                    Error::npos);
+      }
+      registerDefinition(definition);
+      continue;
+    }
+
     if (!definition.body) {
       throw Error("function '" + definition.name + "' has no body",
                   definition.position);
@@ -1816,10 +1786,10 @@ void check(Program& program) {
     }
   }
 
-  if (program.main) {
-    const StreamType empty;  // a program starts from the empty stream
-    checkExpr(*program.main, environment, &empty, nullptr);
-  }
+  // A program starts from the empty stream, but that is reported once the
+  // whole program is typed: hinting `o` here would blame a face's own domain
+  // instead of saying that the program is not closed.
+  if (program.main) checkExpr(*program.main, environment, nullptr, nullptr);
 }
 
 }  // namespace qwq

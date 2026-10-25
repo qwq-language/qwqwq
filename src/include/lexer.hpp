@@ -37,7 +37,6 @@ struct Token {
     // connectors
     Underscore,  // _ (Pack in ports, sequential append in expressions)
     Compose,     // ~
-    Tee,         // ;
     Coerce,      // :
     Loop,        // @
     Branch,      // ?
@@ -45,7 +44,7 @@ struct Token {
     // definitions
     Identifier,  // a function or type name
     Arrow,       // -> inside a signature
-    FatArrow,    // => binds a name to a body
+    FatArrow,    // => binds a name to a body, and names a header at line start
     Equals,      // = introduces a nominal class type
 
     Operator,  // + - * / % | & ^ ! == != > < >= <= $ .

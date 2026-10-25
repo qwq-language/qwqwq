@@ -9,10 +9,10 @@ namespace qwq {
 ///   * one space between items, no padding inside brackets, list commas formatted
 ///     as `, `, and underscores glued to both adjacent items in Pack and append
 ///     contexts;
-///   * `#` touches adjacent read annotations (`#q`, `o#q`) and is spaced like
-///     an operator for Pack reshaping; template types use `Pair<X, Y>`;
-///     array literals/constructors stay glued;
-///   * a chain of stages (`~ ; @ ?`) whose two operands hold no chain of their
+///   * `#` is spaced like an operator for Pack reshaping, and a `=> header.awa`
+///     line is reproduced as written, one per line;
+///   * template types use `Pair<X, Y>`; array literals/constructors stay glued;
+///   * a chain of stages (`~ @ ?`) whose two operands hold no chain of their
 ///     own is a leaf and stays on one line; a longer chain, or one holding
 ///     another chain, is written as a block: the brackets get a line of their
 ///     own and one operand goes on each line, indented one tab per enclosing
@@ -24,7 +24,9 @@ namespace qwq {
 ///   * one blank line between definitions, none at the start or the end;
 ///   * comments keep their place: their own line, or trailing after two spaces.
 ///
-/// Throws `Error` if the source does not lex or parse.
-std::string format(const std::string& source);
+/// Throws `Error` if the source does not lex or parse. `allowDeclarations` is
+/// set when the source is a `.awa` header, whose definitions may stop at the
+/// signature.
+std::string format(const std::string& source, bool allowDeclarations = false);
 
 }  // namespace qwq

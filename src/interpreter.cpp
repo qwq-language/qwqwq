@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <istream>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <utility>
@@ -163,16 +164,19 @@ Interpreter::Interpreter(std::ostream& output, std::istream& input,
                          std::int64_t stepLimit,
                          const std::vector<Definition>& definitions,
                          std::ostream* inputPrompt,
-                         const std::vector<Definition>* specializations)
+                         const std::vector<Definition>* specializations,
+                         std::ostream* errors)
     : output_(output),
       input_(input),
+      errors_(errors),
       inputPrompt_(inputPrompt),
       stepLimit_(stepLimit) {
   const auto add = [&](const Definition& definition) {
-    if (!definition.body || !definition.templateParameters.empty()) return;
+    if (!definition.templateParameters.empty()) return;
+    if (!definition.body && !definition.external) return;
     functions_[definition.name].push_back(Function{
         definition.in, definition.out, definition.body.get(),
-        definition.templateInstanceKey});
+        definition.templateInstanceKey, definition.external});
   };
   for (const Definition& definition : definitions) add(definition);
   if (specializations != nullptr) {
@@ -184,52 +188,60 @@ Stream Interpreter::run(const Expr& expr, Stream input) {
   return evaluate(expr, std::move(input));
 }
 
-Value Interpreter::readInput(const Expr& expr) {
-  const TypePtr type = representationType(expr.out.at(0));
-  if (!type) {
-    throw Error("internal error: nominal input type has no representation",
-                expr.position);
+/// Turns the interpreter's streams into the library's `NativeIo`. Reads are
+/// counted so the REPL can tell a data line from the next command.
+class Interpreter::RuntimeIo final : public NativeIo {
+ public:
+  RuntimeIo(std::istream& input, std::ostream& output, std::ostream& errors,
+            std::size_t& reads)
+      : input_(input), output_(output), errors_(errors), reads_(reads) {}
+
+  std::optional<std::string> readToken() override {
+    ++reads_;
+    std::string token;
+    if (!(input_ >> token)) return std::nullopt;
+    return token;
   }
 
-  ++inputReadCount_;
-
-  std::string token;
-  input_ >> token;
-  if (input_.fail()) {
-    throw Error("'#' expected one " + toString(type) +
-                    " from the input stream, but the input ended",
-                expr.position);
+  std::optional<std::string> readLine() override {
+    ++reads_;
+    std::string line;
+    if (!std::getline(input_, line)) return std::nullopt;
+    return line;
   }
 
-  if (type->kind == Type::Kind::Str) return Value::makeStr(token);
-
-  if (type->kind == Type::Kind::Bool) {
-    if (token == "0") return Value::makeBool(false);
-    if (token == "1") return Value::makeBool(true);
-    throw Error("'#' expected a (0 or 1), found '" + token + "'", expr.position);
+  void write(const std::string& text) override { output_ << text; }
+  void writeError(const std::string& text) override { errors_ << text; }
+  void flush() override {
+    output_.flush();
+    errors_.flush();
   }
 
-  // Int: a decimal integer. Out-of-range values wrap, like every other
-  // integer in the language.
-  std::size_t i = 0;
-  bool negative = false;
-  if (i < token.size() && (token[i] == '+' || token[i] == '-')) {
-    negative = token[i] == '-';
-    ++i;
-  }
-  if (i == token.size()) {
-    throw Error("'#' expected a q, found '" + token + "'", expr.position);
-  }
+ private:
+  std::istream& input_;
+  std::ostream& output_;
+  std::ostream& errors_;
+  std::size_t& reads_;
+};
 
-  std::uint64_t value = 0;
-  for (; i < token.size(); ++i) {
-    if (token[i] < '0' || token[i] > '9') {
-      throw Error("'#' expected a q, found '" + token + "'", expr.position);
+Stream Interpreter::callNative(NativeFunction function, const Expr& expr,
+                               Stream input) {
+  std::ostream& errors = errors_ != nullptr ? *errors_ : output_;
+  RuntimeIo io(input_, output_, errors, inputReadCount_);
+  try {
+    Stream output = function(io, input);
+    if (output.size() != expr.out.size()) {
+      throw Error("internal error: native '" + expr.text + "' produced " +
+                      std::to_string(output.size()) + " slots, expected " +
+                      std::to_string(expr.out.size()),
+                  expr.position);
     }
-    value = value * 10 + static_cast<std::uint64_t>(token[i] - '0');
+    return output;
+  } catch (const Error& error) {
+    if (error.position() != Error::npos) throw;
+    // Native bodies report no position of their own; blame the call.
+    throw Error(error.what(), expr.position);
   }
-  if (negative) value = 0u - value;
-  return Value::makeInt(static_cast<std::int64_t>(value));
 }
 
 void Interpreter::tick(const Expr& expr) {
@@ -352,9 +364,6 @@ Stream Interpreter::evaluateFace(const Expr& expr, const Stream& input) {
     case Core::Duplicate:
       if (input.empty()) return {};
       return {Value::makePack(input[0], input[0])};
-
-    case Core::Read:
-      return {readInput(expr)};
 
     case Core::Hash:
       throw Error("internal error: unresolved '#' overload", expr.position);
@@ -487,27 +496,39 @@ Stream Interpreter::evaluateCall(const Expr& expr, Stream input) {
     throw Error("unknown function '" + expr.text + "'", expr.position);
   }
 
-  // The checker already picked an overload; find the body with that signature.
-  const Expr* body = nullptr;
+  // The checker already picked an overload; find its body, or the native
+  // implementation a header declared.
+  const Function* selected = nullptr;
   for (const Function& function : found->second) {
     if (!expr.templateInstanceKey.empty()) {
       if (function.templateInstanceKey == expr.templateInstanceKey) {
-        body = function.body;
+        selected = &function;
         break;
       }
     } else if (function.templateInstanceKey.empty() &&
                equals(function.in, expr.in) && equals(function.out, expr.out)) {
-      body = function.body;
+      selected = &function;
       break;
     }
   }
-  if (body == nullptr) {
+  if (selected == nullptr) {
     throw Error("internal error: no body matches the checked signature of '" +
                     expr.text + "'",
                 expr.position);
   }
 
-  return evaluate(*body, std::move(input));
+  if (selected->external) {
+    const NativeFunction native = findNative(expr.text, expr.in, expr.out);
+    if (native == nullptr) {
+      throw Error("'" + expr.text +
+                      "' is declared but the runtime has no implementation for " +
+                      toString(expr.in) + " -> " + toString(expr.out),
+                  expr.position);
+    }
+    return callNative(native, expr, std::move(input));
+  }
+
+  return evaluate(*selected->body, std::move(input));
 }
 
 Stream Interpreter::evaluate(const Expr& expr, Stream input) {
@@ -531,13 +552,6 @@ Stream Interpreter::evaluate(const Expr& expr, Stream input) {
 
     case Expr::Kind::Compose: {
       Stream intermediate = evaluate(*expr.left, std::move(input));
-      return evaluate(*expr.right, std::move(intermediate));
-    }
-
-    case Expr::Kind::Tee: {
-      Stream intermediate = evaluate(*expr.left, std::move(input));
-      for (const Value& value : intermediate) output_ << value;
-      output_.flush();
       return evaluate(*expr.right, std::move(intermediate));
     }
 

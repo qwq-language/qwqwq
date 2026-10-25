@@ -1,0 +1,19 @@
+read(o -> q)
+
+read(o -> s)
+
+read(o -> a)
+
+readline(o -> s)
+
+print(q -> o)
+
+print(s -> o)
+
+print(a -> o)
+
+eprint(q -> o)
+
+eprint(s -> o)
+
+eprint(a -> o)

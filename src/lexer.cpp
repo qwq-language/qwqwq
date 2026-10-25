@@ -121,7 +121,6 @@ std::vector<Token> tokenize(const std::string& source, bool keepComments) {
         tokens.push_back(makeText(Token::Kind::Underscore, "_", i++));
         continue;
       case '~': tokens.push_back(makeText(Token::Kind::Compose, "~", i++)); continue;
-      case ';': tokens.push_back(makeText(Token::Kind::Tee, ";", i++)); continue;
       case ':': tokens.push_back(makeText(Token::Kind::Coerce, ":", i++)); continue;
       case '@': tokens.push_back(makeText(Token::Kind::Loop, "@", i++)); continue;
       case '?': tokens.push_back(makeText(Token::Kind::Branch, "?", i++)); continue;

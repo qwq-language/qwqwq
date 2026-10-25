@@ -3,12 +3,15 @@
 #include <iostream>
 #include <limits>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "checker.hpp"
 #include "diagnostic.hpp"
 #include "error.hpp"
 #include "interpreter.hpp"
 #include "lexer.hpp"
+#include "loader.hpp"
 #include "parser.hpp"
 #include "version.hpp"
 
@@ -27,7 +30,7 @@ const char* kHelp =
     "  :defs            list the names defined in this session\n"
     "\n"
     "Anything else is parsed as qwq source.\n"
-    "Functions and class types stay in scope for later lines.\n"
+    "Headers, functions and class types stay in scope for later lines.\n"
     "Expressions whose domain is o are evaluated and their resulting stream is printed.\n";
 
 std::string trim(const std::string& text) {
@@ -78,18 +81,42 @@ bool startsWithDefinition(const std::string& text) {
 class Session {
  public:
   Session(std::ostream& output, std::ostream& errors, std::istream& input,
-          std::int64_t stepLimit, bool promptForInput)
+          std::int64_t stepLimit, bool promptForInput,
+          std::vector<std::string> searchPaths)
       : output_(output),
         errors_(errors),
         input_(input),
         stepLimit_(stepLimit),
-        promptForInput_(promptForInput) {}
+        promptForInput_(promptForInput),
+        searchPaths_(std::move(searchPaths)) {}
+
+  /// Reads a header into the session: its text joins the definitions every
+  /// later line is parsed with.
+  void include(const std::string& path) {
+    const FileSystemProvider provider;
+    try {
+      const std::string text = inlineHeaders(path, provider, searchPaths_);
+      std::vector<Token> tokens = tokenize(text, /*keepComments=*/false);
+      Program program = parse(tokens, /*allowDeclarations=*/true);
+      if (program.main) {
+        errors_ << "error: a header cannot run a program; it only declares: '"
+                << path << "'\n";
+        return;
+      }
+      definitions_ += text;
+      if (definitions_.back() != '\n') definitions_ += '\n';
+      output_ << "included " << path << " (" << program.definitions.size()
+              << " declarations)\n";
+    } catch (const Error& error) {
+      errors_ << "error: " << error.what() << "\n";
+    }
+  }
 
   /// Validates a declaration and keeps it in scope for later lines.
   void define(const std::string& source) {
     const std::size_t sourceOffset = definitions_.size();
     const std::string combined = definitions_ + source + "\n";
-    Program program = parse(tokenize(combined));
+    Program program = parse(tokenize(combined), /*allowDeclarations=*/true);
     check(program);
 
     const TypeAliasDefinition* lastAlias = nullptr;
@@ -119,7 +146,7 @@ class Session {
       output_ << "no definitions or class types\n";
       return;
     }
-    Program program = parse(tokenize(definitions_));
+    Program program = parse(tokenize(definitions_), /*allowDeclarations=*/true);
     check(program);
     std::size_t aliasIndex = 0;
     std::size_t definitionIndex = 0;
@@ -188,6 +215,7 @@ class Session {
   std::istream& input_;
   std::int64_t stepLimit_;
   bool promptForInput_;
+  std::vector<std::string> searchPaths_;
   std::string definitions_;
 
   /// The remaining characters on the data line must not be mistaken for the
@@ -200,7 +228,7 @@ class Session {
 
   /// Parses and checks `line` in the scope of the session's definitions.
   Program parseChecked(const std::string& line) {
-    Program program = parse(tokenize(definitions_ + line));
+    Program program = parse(tokenize(definitions_ + line), /*allowDeclarations=*/true);
     if (!program.main) throw Error("expected an expression");
     check(program);
     return program;
@@ -278,11 +306,13 @@ bool handleCommand(const std::string& line, Session& session, std::ostream& outp
 }  // namespace
 
 int runRepl(std::istream& input, std::ostream& output, std::ostream& errors,
-            std::int64_t stepLimit, bool promptForInput) {
+            std::int64_t stepLimit, bool promptForInput,
+            const std::vector<std::string>& searchPaths) {
   output << "qwqwq (qwq language interpreter) " << kVersion << "\n"
          << "Type :help for help, :quit to exit.\n";
 
-  Session session(output, errors, input, stepLimit, promptForInput);
+  Session session(output, errors, input, stepLimit, promptForInput,
+                  searchPaths);
   std::string buffer;
 
   for (;;) {
@@ -300,6 +330,13 @@ int runRepl(std::istream& input, std::ostream& output, std::ostream& errors,
       if (trimmed[0] == ':') {
         if (!handleCommand(trimmed, session, output, errors)) return 0;
         continue;
+      }
+      if (trimmed.rfind("=>", 0) == 0) {
+        std::string path = trim(trimmed.substr(2));
+        if (path.size() > 4 && path.compare(path.size() - 4, 4, ".awa") == 0) {
+          session.include(path);
+          continue;
+        }
       }
     }
 

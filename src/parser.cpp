@@ -15,13 +15,17 @@ std::int64_t negate(std::int64_t value) {
 
 class Parser {
  public:
-  explicit Parser(std::vector<Token> tokens) : tokens_(std::move(tokens)) {}
+  explicit Parser(std::vector<Token> tokens, bool allowDeclarations)
+      : tokens_(std::move(tokens)),
+        allowDeclarations_(allowDeclarations) {}
 
   Program parseProgram() {
     Program program;
 
-    while (startsTypeAlias() || startsDefinition()) {
-      if (startsTypeAlias()) {
+    while (startsInclude() || startsTypeAlias() || startsDefinition()) {
+      if (startsInclude()) {
+        program.includes.push_back(parseInclude());
+      } else if (startsTypeAlias()) {
         program.typeAliases.push_back(parseTypeAlias());
       } else {
         program.definitions.push_back(parseDefinition());
@@ -41,6 +45,7 @@ class Parser {
  private:
   std::vector<Token> tokens_;
   std::size_t index_ = 0;
+  bool allowDeclarations_ = false;
 
   const Token& current() const { return tokens_[index_]; }
 
@@ -232,7 +237,12 @@ class Parser {
         expect(Token::Kind::Arrow, "'->' in the function signature");
         parsePort();
         expect(Token::Kind::RightParen, "')' after the function signature");
-        result = current().kind == Token::Kind::FatArrow;
+        // A header may stop at the signature; the body then lives in the
+        // runtime, so the statement ends with the line.
+        result = current().kind == Token::Kind::FatArrow ||
+                 (allowDeclarations_ &&
+                  (current().kind == Token::Kind::End ||
+                   current().lineBreakBefore));
       }
     } catch (const Error&) {
       result = false;
@@ -260,7 +270,24 @@ class Parser {
       throw Error("a function template requires an explicit signature",
                   definition.position);
     }
-    expect(Token::Kind::FatArrow, "'=>' before the body");
+
+    if (current().kind != Token::Kind::FatArrow) {
+      if (!allowDeclarations_) {
+        throw Error("expected '=>' before the body of '" + definition.name + "'",
+                    current().position);
+      }
+      if (!definition.hasSignature) {
+        throw Error("a declaration needs a signature: " + definition.name +
+                        "(A -> B)",
+                    definition.position);
+      }
+      definition.external = true;
+      const std::size_t last = index_ == 0 ? 0 : index_ - 1;
+      definition.end = tokens_[last].position + tokens_[last].spelling.size();
+      return definition;
+    }
+
+    advance();  // '=>'
 
     definition.body = parseExpr(0);
     const std::size_t last = index_ == 0 ? 0 : index_ - 1;
@@ -273,7 +300,6 @@ class Parser {
   static int precedence(const Token& token) {
     switch (token.kind) {
       case Token::Kind::Compose:
-      case Token::Kind::Tee:
       case Token::Kind::Coerce:
         return 1;
       case Token::Kind::Loop:
@@ -331,7 +357,6 @@ class Parser {
 
     switch (token.kind) {
       case Token::Kind::Compose: expr->kind = Expr::Kind::Compose; break;
-      case Token::Kind::Tee: expr->kind = Expr::Kind::Tee; break;
       case Token::Kind::Coerce: expr->kind = Expr::Kind::Coerce; break;
       case Token::Kind::Underscore: expr->kind = Expr::Kind::Append; break;
       case Token::Kind::Loop: expr->kind = Expr::Kind::Loop; break;
@@ -349,6 +374,50 @@ class Parser {
   }
 
   bool sameLineAsPrevious() const { return !current().lineBreakBefore; }
+
+  /// `=> io.awa` on a line of its own names a header. Anywhere else `=>`
+  /// binds a body to a name.
+  bool startsInclude() const {
+    if (current().kind != Token::Kind::FatArrow) return false;
+    if (index_ != 0 && !current().lineBreakBefore) return false;
+    return !includePath().empty();
+  }
+
+  /// The path in `=> path`, up to the end of the line. Empty when the line is
+  /// not a header reference.
+  std::string includePath() const {
+    std::size_t last = index_ + 1;
+    std::vector<std::string> words;
+    while (last < tokens_.size() && tokens_[last].kind != Token::Kind::End &&
+           (last == index_ + 1 || !tokens_[last].lineBreakBefore)) {
+      if (tokens_[last].kind == Token::Kind::Comment) break;
+      words.push_back(tokens_[last].spelling);
+      ++last;
+    }
+    if (words.empty()) return {};
+
+    std::string path;
+    if (words.size() == 1) {
+      path = words.front();
+    } else {
+      for (const std::string& word : words) path += word;
+    }
+    const std::size_t dot = path.find_last_of('.');
+    if (dot == std::string::npos || path.substr(dot) != ".awa") return {};
+    return path;
+  }
+
+  Include parseInclude() {
+    Include include;
+    include.position = current().position;
+    include.path = includePath();
+    ++index_;  // '=>'
+    while (index_ < tokens_.size() && tokens_[index_].kind != Token::Kind::End &&
+           !tokens_[index_].lineBreakBefore) {
+      ++index_;
+    }
+    return include;
+  }
 
   bool startsImplicitStage() const {
     if (current().kind == Token::Kind::Identifier ||
@@ -398,6 +467,40 @@ class Parser {
     Port port;
     port.parts.push_back(parsePortPart());
     return port;
+  }
+
+  /// `_` binds tighter than a core, so the eyes of `q $ q_q` are `q` and the
+  /// two-slot word `q_q`. A `_` that opens a literal stage is an append
+  /// instead: in `o1q _ o2q` the `_` separates two stages.
+  Port parseJoinedPort() {
+    Port port;
+    port.parts.push_back(parsePortPart());
+    while (current().kind == Token::Kind::Underscore) {
+      const std::size_t save = index_;
+      advance();
+      if (startsLiteralStage()) {
+        index_ = save;
+        break;
+      }
+      try {
+        port.parts.push_back(parsePortPart());
+      } catch (const Error&) {
+        index_ = save;
+        break;
+      }
+    }
+    return port;
+  }
+
+  /// Whether the current token opens a stage rather than continuing a type:
+  /// `1q`, `"s"`, `{...}`, and `o` written as the empty domain of a core.
+  bool startsLiteralStage() const {
+    if (startsLiteralCore()) return true;
+    if (current().kind != Token::Kind::VoidPort) return false;
+    const Token& next = peek();
+    return next.kind == Token::Kind::IntLiteral ||
+           next.kind == Token::Kind::StringLiteral ||
+           next.kind == Token::Kind::LeftBrace || isCoreStart(next);
   }
 
   Port expressionAsPort(ExprPtr expression, std::size_t position) {
@@ -504,7 +607,13 @@ class Parser {
     if (isPortStart(current()) ||
         (current().kind == Token::Kind::LeftBracket &&
          peek().kind != Token::Kind::RightBracket)) {
-      Port domain = parseAnnotationPort();
+      const std::size_t portStart = index_;
+      Port domain = parseJoinedPort();
+      if (!isStructuralPort(domain) ||
+          !(startsCore() && sameLineAsPrevious())) {
+        index_ = portStart;
+        domain = parseAnnotationPort();
+      }
       const bool literalInputNeedsIdentity =
           startsLiteralCore() && !isSyntacticallyEmptyPort(domain);
       if (startsCore() && sameLineAsPrevious() && !literalInputNeedsIdentity) {
@@ -542,7 +651,7 @@ class Parser {
       expr->hasDomain = true;
     }
     if (startsAnnotationPort() && sameLineAsPrevious()) {
-      expr->codomain = parseAnnotationPort();
+      expr->codomain = parseJoinedPort();
       expr->hasCodomain = true;
     }
     expr->core = core;
@@ -749,14 +858,14 @@ class Parser {
 
 }  // namespace
 
-Program parse(const std::vector<Token>& tokens) {
+Program parse(const std::vector<Token>& tokens, bool allowDeclarations) {
   // Comments carry no syntax; the parser only sees code.
   std::vector<Token> code;
   code.reserve(tokens.size());
   for (const Token& token : tokens) {
     if (token.kind != Token::Kind::Comment) code.push_back(token);
   }
-  return Parser(code).parseProgram();
+  return Parser(code, allowDeclarations).parseProgram();
 }
 
 }  // namespace qwq
